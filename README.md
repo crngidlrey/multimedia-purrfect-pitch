@@ -1,0 +1,182 @@
+# 🐱 Purrfect Pitch - Interactive Cat Sound Matching Game
+
+<div align="center">
+
+![Python](https://img.shields.io/badge/Python-3.11+-3776AB?style=for-the-badge&logo=python&logoColor=white)
+![OpenCV](https://img.shields.io/badge/OpenCV-4.8+-5C3EE8?style=for-the-badge&logo=opencv&logoColor=white)
+![Pygame](https://img.shields.io/badge/Pygame-2.5+-00A86B?style=for-the-badge&logo=python&logoColor=white)
+![Status](https://img.shields.io/badge/Status-Production_Ready-success?style=for-the-badge)
+
+**Tugas Besar Mata Kuliah Multimedia**
+Institut Teknologi Sumatera
+
+[Demo](#demo) • [Installation](#installation) • [How to Play](#how-to-play) • [Team](#team-members)
+
+</div>
+
+---
+
+## 📋 Tentang Proyek
+
+**Purrfect Pitch** adalah game interaktif multimedia yang menggabungkan **audio processing**, **computer vision**, dan **game logic**. Pemain mendengarkan suara kucing yang pitch-nya sudah dimodifikasi, lalu memilih gambar kucing yang sesuai dengan **memiringkan kepala** (face tracking) atau menggunakan keyboard.
+
+
+### ✨ Fitur Utama
+
+- 🎵 **Audio Processing** - Pitch shifting menggunakan librosa
+- 👁️ **Face Tracking** - Deteksi kemiringan kepala (OpenCV Haar Cascade, threshold 8°)
+- 🎮 **Game Logic** - Timer 30 detik, skor otomatis, soal diacak
+- 🖥️ **GUI** - Interface interaktif dengan Pygame
+- 📊 **Waveform Viz** - Visualisasi audio real-time
+
+---
+
+## 🛠️ Technology Stack
+
+| Category | Technology |
+|----------|-----------|
+| **Language** | Python 3.11+ |
+| **Audio** | Librosa, SoundFile |
+| **Computer Vision** | OpenCV |
+| **Game Engine** | Pygame |
+| **Numerical** | NumPy |
+
+---
+
+## 🎬 Demo
+
+> **Catatan**: Tambahkan screenshot/GIF gameplay di sini
+
+```
+[Screenshot: Layar Awal]
+[Screenshot: Gameplay dengan Face Tracking]
+[Screenshot: Game Over]
+```
+
+---
+
+## 📥 Instalasi
+
+### Prasyarat
+- Python 3.11+
+- Webcam (untuk face tracking)
+- Speaker/Headphone
+
+### Cara Instalasi
+
+```bash
+# Clone repository
+git clone https://github.com/crngidlrey/multimedia-purrfect-pitch.git
+cd multimedia-purrfect-pitch
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Generate audio files (opsional)
+python audio_processing.py -i asset -o asset_output -s -5
+
+# Generate metadata
+python generate_metadata.py
+
+# Jalankan game
+python main.py
+```
+
+---
+
+## 📁 Struktur Proyek
+
+```
+multimedia-purrfect-pitch/
+├── asset/                      # Asset asli (10 audio + 10 gambar)
+├── asset_output/               # Audio yang sudah diproses + metadata.json
+├── main.py                     # Main game loop
+├── angle_face_tracker.py       # Modul face tracking
+├── audio_processing.py         # Utilitas audio
+├── game_logic.py               # Manajemen state game
+├── generate_metadata.py        # Generator metadata
+└── requirements.txt            # Dependencies
+```
+
+---
+
+## 🎮 Cara Bermain
+
+### Kontrol
+
+**Mode Face Tracking** (default):
+- `SPACE` - Mulai/Restart game
+- **Miringkan kepala KIRI** (> 8°) → Pilih kiri
+- **Miringkan kepala KANAN** (> 8°) → Pilih kanan
+- `ESC` - Keluar
+
+**Mode Keyboard** (fallback):
+- `LEFT ARROW` - Pilih kiri
+- `RIGHT ARROW` - Pilih kanan
+
+### Alur Permainan
+
+1. Tekan `SPACE` untuk mulai
+2. Dengarkan audio kucing
+3. Tunggu audio selesai
+4. Pilih gambar dengan head tilt atau keyboard
+5. Dapat feedback (✅/❌)
+6. Soal berikutnya muncul otomatis
+7. Game over setelah 30 detik
+
+---
+
+## 👥 Tim Pengembang
+
+| Nama | NIM |
+|------|-----|
+| Elma Nurul Fatika | 122140069 |
+| Lois Novel E Gurning | 122140098 |
+| Dina Rahma Dita | 122140184 |
+
+---
+
+## 📊 Logbook Pengembangan
+
+<details>
+<summary><b>Lihat Riwayat Perkembangan Proyek</b></summary>
+
+| Minggu | Tanggal | Progress |
+|--------|---------|----------|
+| 1 | 27/10/2024 - 03/11/2024 | • Brainstorming ide proyek<br>• Pencarian referensi game serupa<br>• Pembuatan repository GitHub |
+| 2 | 03/11/2024 - 10/11/2024 | • Breakdown ide dan fitur game<br>• Merancang struktur code (MVC pattern)<br>• Desain GUI mockup |
+| 3 | 10/11/2024 - 17/11/2024 | • Pengumpulan asset (10 audio kucing + 10 gambar)<br>• Implementasi audio processing (librosa pitch shifting)<br>• Setup face tracking dengan OpenCV |
+| 4 | 17/11/2024 - 24/11/2024 | • Implementasi game logic dan state management<br>• Integrasi GUI dengan Pygame<br>• Mulai menyusun laporan dokumentasi |
+| 5 | 24/11/2024 - 01/12/2024 | • Revisi code (debugging audio looping bug)<br>• Optimasi head tilt detection<br>• Finalisasi code dan laporan |
+
+</details>
+
+---
+
+## 📚 Referensi
+
+- [Librosa Documentation](https://librosa.org/) - Audio processing
+- [OpenCV Documentation](https://docs.opencv.org/) - Computer vision
+- [Pygame Documentation](https://www.pygame.org/docs/) - Game development
+
+---
+
+## 🙏 Ucapan Terima Kasih
+
+- Dosen pengampu: Martin Clinton Tosima Manullang, S.T., M.T., Ph.D.
+- Rekan-rekan kelompok yang telah berkontribusi
+
+---
+
+<div align="center">
+
+**Made with ❤️ for Multimedia Course**
+Institut Teknologi Sumatera © 2025
+
+[![Python](https://img.shields.io/badge/Python-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![OpenCV](https://img.shields.io/badge/OpenCV-5C3EE8?logo=opencv&logoColor=white)](https://opencv.org/)
+[![Pygame](https://img.shields.io/badge/Pygame-00A86B?logo=python&logoColor=white)](https://www.pygame.org/)
+
+[⬆ Back to Top](#-purrfect-pitch---interactive-cat-sound-matching-game)
+
+</div>
