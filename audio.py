@@ -1,16 +1,4 @@
 #!/usr/bin/env python3
-"""
-audio.py
-Batch pitch-down audio files in ./asset and save results to ./asset_output.
-
-Default: semitones = -5
-Outputs are WAV files (safer for writing without ffmpeg).
-
-Usage:
-  python audio.py
-  python audio.py --semitones -4
-  python audio.py --in_folder asset --out_folder asset_output --semitones -6
-"""
 
 import argparse
 from pathlib import Path
@@ -21,9 +9,7 @@ import numpy as np
 from tqdm import tqdm
 
 def pitch_shift_file(input_path: Path, output_path: Path, n_semitones: float, sr_target=None):
-    """
-    Load audio (keeps channels), pitch-shift each channel, and write output WAV.
-    """
+
     # librosa.load with mono=False preserves channels; sr=None keeps original sample rate
     y, sr = librosa.load(str(input_path), sr=sr_target, mono=False)
 
