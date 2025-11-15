@@ -70,6 +70,35 @@ def pitch_shift_file(input_path: Path, output_path: Path, n_semitones: float, sr
     out_duration = librosa.get_duration(filename=str(output_path))
     return sr, out_duration
 
+def generate_waveform_data(audio_path: Path, num_samples: int = 512):
+    """
+    Membuat data waveform ter-normalisasi dari file audio.
+
+    Args:
+        audio_path (Path): Path file audio sumber.
+        num_samples (int): Jumlah sampel waveform yang diinginkan.
+
+    Returns:
+        list[float]: List amplitudo (0..1) sebanyak num_samples.
+    """
+    if num_samples <= 0:
+        raise ValueError("num_samples harus lebih besar dari 0")
+
+    y, _ = librosa.load(str(audio_path), sr=None, mono=True)
+    if y.size == 0:
+        return [0.0] * num_samples
+
+    amplitudes = np.abs(y)
+    positions = np.linspace(0, amplitudes.size - 1, num=num_samples)
+    samples = np.interp(positions, np.arange(amplitudes.size), amplitudes)
+
+    max_amp = samples.max()
+    if max_amp > 0:
+        samples = samples / max_amp
+
+    return samples.tolist()
+
+
 def find_audio_files(folder: Path, exts=(".mp3", ".wav", ".ogg", ".flac", ".m4a")):
     """
     Mencari semua file audio dengan ekstensi yang didukung dalam folder. Fungsi ini melakukan pencarian file berdasarkan ekstensi yang ditentukan dan mengembalikan list file yang sudah diurutkan.
