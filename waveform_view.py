@@ -96,16 +96,17 @@ class WaveformView:
     ) -> None:
         """
         Gambar waveform ke frame pada posisi dan ukuran tertentu.
+        SEMUA elemen dijamin berada DALAM box [x, y, width, height].
 
         Args:
             frame (np.ndarray): Frame target (BGR)
-            x (int): Posisi X (top-left)
-            y (int): Posisi Y (top-left)
-            width (int): Lebar area waveform
-            height (int): Tinggi area waveform
+            x (int): Posisi X (top-left) dari bounding box
+            y (int): Posisi Y (top-left) dari bounding box
+            width (int): Lebar TOTAL area waveform (termasuk border/margin)
+            height (int): Tinggi TOTAL area waveform (termasuk border/margin)
             show_border (bool): Tampilkan border atau tidak
         """
-        # Validasi bounds
+        # Validasi bounds - pastikan tidak keluar frame
         frame_h, frame_w = frame.shape[:2]
         if x < 0 or y < 0 or x + width > frame_w or y + height > frame_h:
             # Clipping jika keluar frame
@@ -117,12 +118,14 @@ class WaveformView:
         if width <= 0 or height <= 0:
             return
 
-        # Draw background
-        cv2.rectangle(frame, (x, y), (x + width, y + height), self.bg_color, -1)
+        # TIDAK menggambar background - sudah ada di main.py
+        # Background panel transparan sudah di-handle di main.py
 
-        # Draw border
+        # Draw border DALAM area box (thickness mengurangi area dalam)
+        # Border tidak boleh menambah ukuran box!
         if show_border:
-            cv2.rectangle(frame, (x, y), (x + width, y + height), self.border_color, 2)
+            # Border 1px thickness agar tidak memakan banyak space
+            cv2.rectangle(frame, (x, y), (x + width - 1, y + height - 1), self.border_color, 1)
 
         # Draw waveform jika ada data
         if self._waveform_data and len(self._waveform_data) > 0:
@@ -144,54 +147,90 @@ class WaveformView:
     ) -> None:
         """
         Gambar waveform sebagai vertical bars.
+        DIJAMIN semua bars berada DALAM box [x, y, width, height].
         """
         num_samples = len(self._waveform_data)
         if num_samples == 0:
             return
 
-        # Hitung lebar setiap bar dengan spacing
+        # === STEP 1: Hitung area yang aman untuk menggambar ===
+        # Margin internal yang cukup besar untuk safety
+        margin_horizontal = 12  # Safety margin kiri-kanan
+        margin_vertical = 12    # Safety margin atas-bawah
+
+        # Area yang bisa digunakan untuk waveform
+        usable_width = width - 2 * margin_horizontal
+        usable_height = height - 2 * margin_vertical
+
+        if usable_width <= 0 or usable_height <= 0:
+            return
+
+        # === STEP 2: Hitung ukuran bar ===
         bar_spacing = 2
-        bar_width = max(1, (width - (num_samples - 1) * bar_spacing) // num_samples)
+        available_for_bars = usable_width - (num_samples - 1) * bar_spacing
+        bar_width = max(1, available_for_bars // num_samples)
 
-        # Tinggi maksimum bar (beri margin atas/bawah)
-        margin = 4
-        max_bar_height = height - 2 * margin
+        # Tinggi maksimum bar (setengah dari usable_height karena symmetrical)
+        max_bar_height = usable_height // 2
 
-        # Center line
+        # === STEP 3: Hitung center line ===
         center_y = y + height // 2
+
+        # === STEP 4: Bounding box untuk clipping ===
+        box_left = x + margin_horizontal
+        box_right = x + width - margin_horizontal
+        box_top = y + margin_vertical
+        box_bottom = y + height - margin_vertical
 
         # Progress threshold (sample index)
         progress_idx = int(self._playback_progress * num_samples)
 
-        # Draw bars
+        # === STEP 5: Draw bars dengan clipping ketat ===
         for i, amplitude in enumerate(self._waveform_data):
             # Posisi X bar
-            bar_x = x + margin + i * (bar_width + bar_spacing)
+            bar_x = box_left + i * (bar_width + bar_spacing)
 
-            # Tinggi bar berdasarkan amplitude (symmetrical dari center)
-            bar_h = int(amplitude * max_bar_height / 2)
+            # CLAMP X agar tidak keluar box
+            bar_x = max(box_left, min(bar_x, box_right - bar_width))
+
+            # Tinggi bar berdasarkan amplitude (0.0 - 1.0)
+            # SCALE dan CLAMP amplitude
+            amplitude_clamped = max(0.0, min(1.0, amplitude))
+            bar_h = int(amplitude_clamped * max_bar_height)
 
             # Warna: progress color jika sudah diplay, waveform color jika belum
             color = self.progress_color if i < progress_idx else self.waveform_color
 
             # Draw bar (dari center ke atas dan bawah)
             if bar_h > 0:
-                # Bar atas
-                cv2.rectangle(
-                    frame,
-                    (bar_x, center_y - bar_h),
-                    (bar_x + bar_width, center_y),
-                    color,
-                    -1
-                )
-                # Bar bawah
-                cv2.rectangle(
-                    frame,
-                    (bar_x, center_y),
-                    (bar_x + bar_width, center_y + bar_h),
-                    color,
-                    -1
-                )
+                # Koordinat bar atas
+                top_y = center_y - bar_h
+                # Koordinat bar bawah
+                bottom_y = center_y + bar_h
+
+                # CLAMP Y agar tidak keluar box
+                top_y = max(box_top, min(top_y, center_y))
+                bottom_y = max(center_y, min(bottom_y, box_bottom))
+
+                # Bar atas (jika ada ruang)
+                if top_y < center_y:
+                    cv2.rectangle(
+                        frame,
+                        (bar_x, top_y),
+                        (bar_x + bar_width, center_y),
+                        color,
+                        -1
+                    )
+
+                # Bar bawah (jika ada ruang)
+                if bottom_y > center_y:
+                    cv2.rectangle(
+                        frame,
+                        (bar_x, center_y),
+                        (bar_x + bar_width, bottom_y),
+                        color,
+                        -1
+                    )
 
     def _draw_line(
         self,
@@ -203,36 +242,66 @@ class WaveformView:
     ) -> None:
         """
         Gambar waveform sebagai continuous line.
+        DIJAMIN semua line berada DALAM box [x, y, width, height].
         """
         num_samples = len(self._waveform_data)
         if num_samples < 2:
             return
 
-        # Margin
-        margin = 4
-        max_amplitude_height = (height - 2 * margin) // 2
+        # === STEP 1: Hitung area yang aman untuk menggambar ===
+        margin_horizontal = 12  # Safety margin kiri-kanan
+        margin_vertical = 12    # Safety margin atas-bawah
+
+        usable_width = width - 2 * margin_horizontal
+        usable_height = height - 2 * margin_vertical
+
+        if usable_width <= 0 or usable_height <= 0:
+            return
+
+        # Tinggi maksimum amplitude (setengah dari usable_height)
+        max_amplitude_height = usable_height // 2
+
+        # === STEP 2: Hitung center line ===
         center_y = y + height // 2
+
+        # === STEP 3: Bounding box untuk clipping ===
+        box_left = x + margin_horizontal
+        box_right = x + width - margin_horizontal
+        box_top = y + margin_vertical
+        box_bottom = y + height - margin_vertical
 
         # Progress threshold
         progress_idx = int(self._playback_progress * num_samples)
 
-        # Generate points
+        # === STEP 4: Generate points dengan clipping ===
         points = []
         for i, amplitude in enumerate(self._waveform_data):
-            px = x + margin + int((i / (num_samples - 1)) * (width - 2 * margin))
-            py = center_y - int(amplitude * max_amplitude_height)
+            # Mapping index sample -> X coordinate
+            px = box_left + int((i / (num_samples - 1)) * usable_width)
+
+            # CLAMP amplitude ke [0.0, 1.0]
+            amplitude_clamped = max(0.0, min(1.0, amplitude))
+
+            # Mapping amplitude -> Y coordinate (dari center)
+            py = center_y - int(amplitude_clamped * max_amplitude_height)
+
+            # CLAMP koordinat X dan Y agar tidak keluar box
+            px = max(box_left, min(px, box_right))
+            py = max(box_top, min(py, box_bottom))
+
             points.append((px, py))
 
-        # Draw line segments dengan warna berbeda untuk progress
+        # === STEP 5: Draw line segments ===
         for i in range(len(points) - 1):
             color = self.progress_color if i < progress_idx else self.waveform_color
+            # cv2.line sudah melakukan clipping otomatis, tapi kita sudah clamp manual
             cv2.line(frame, points[i], points[i + 1], color, 2, cv2.LINE_AA)
 
-        # Draw center line (subtle)
+        # Draw center line (subtle, di dalam box)
         cv2.line(
             frame,
-            (x + margin, center_y),
-            (x + width - margin, center_y),
+            (box_left, center_y),
+            (box_right, center_y),
             (60, 60, 60),
             1
         )
