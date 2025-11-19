@@ -217,3 +217,69 @@ class PurrfectPitchGame:
         """Callback ketika audio selesai."""
         print("[AUDIO] Finished, waiting for answer...")
         self.phase = GamePhase.WAITING_ANSWER
+
+    def _submit_answer(self, side: str) -> None:
+        """
+        Submit jawaban pemain.
+
+        Args:
+            side (str): "LEFT" atau "RIGHT"
+        """
+        # Bisa jawab saat audio playing atau waiting answer
+        if self.phase not in (GamePhase.PLAYING_AUDIO, GamePhase.WAITING_ANSWER):
+            return
+
+        # Cek apakah sudah pernah jawab untuk soal ini
+        if self.answer_submitted:
+            print(f"[ANSWER] Already answered, ignoring...")
+            return
+
+        # Mark as submitted
+        self.answer_submitted = True
+
+        print(f"[ANSWER] Submitted: {side}")
+
+        # Stop audio jika masih playing
+        if self.audio_manager.is_playing():
+            self.audio_manager.stop()
+
+        # Submit ke game logic
+        is_correct = self.game_logic.submit_answer(side)
+
+        # Show feedback
+        self.feedback_message = "BENAR!" if is_correct else "SALAH!"
+        self.feedback_start_time = time.time()
+        self.phase = GamePhase.SHOW_FEEDBACK
+
+        # Hide memes
+        self.meme_overlay.hide_memes(animate=True)
+
+        print(f"[FEEDBACK] {self.feedback_message}")
+
+    def _on_face_tracking_update(self, state: FaceTrackerState, frame: np.ndarray) -> None:
+        """
+        Callback dari face tracker.
+
+        Args:
+            state (FaceTrackerState): State face tracking terbaru
+            frame (np.ndarray): Frame kamera (sudah flipped)
+        """
+        # Update head position untuk meme overlay
+        if state.face_detected:
+            head_x = frame.shape[1] // 2
+            head_y = frame.shape[0] // 2
+            self.meme_overlay.set_head_position(head_x, head_y)
+
+        # Update highlight berdasarkan tilt state
+        if self.phase in (GamePhase.PLAYING_AUDIO, GamePhase.WAITING_ANSWER):
+            if state.tilt_state in ("LEFT", "RIGHT"):
+                self.meme_overlay.set_highlight(state.tilt_state)
+            else:
+                self.meme_overlay.set_highlight(None)
+
+            # Confirm answer jika tilt confirmed
+            if state.tilt_confirmed and state.tilt_state in ("LEFT", "RIGHT"):
+                self._submit_answer(state.tilt_state)
+        else:
+            # Reset highlight jika tidak dalam phase playing/waiting
+            self.meme_overlay.set_highlight(None)
