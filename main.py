@@ -148,3 +148,72 @@ class PurrfectPitchGame:
 
         print(f"[INFO] Loaded {len(questions)} questions")
         return questions
+
+    def start_game(self) -> None:
+        """Mulai game baru."""
+        print("\n[GAME] Starting new game...")
+        self.game_logic.start_game(shuffle=True)
+        self.phase = GamePhase.IDLE
+        self.feedback_message = ""
+        self.answer_submitted = False
+        self._load_next_question()
+
+    def _load_next_question(self) -> None:
+        """Load soal berikutnya."""
+        # Reset answer flag untuk soal baru
+        self.answer_submitted = False
+
+        state = self.game_logic.get_state()
+
+        if not state.is_running:
+            self.phase = GamePhase.GAME_OVER
+            return
+
+        question = state.current_question
+        if question is None:
+            self.phase = GamePhase.GAME_OVER
+            return
+
+        print(f"\n[QUESTION] Loading {question.id}...")
+
+        # Load audio ke audio manager
+        clip = AudioClip(
+            id=question.id,
+            original_path=question.audio_path,
+            processed_path=question.audio_path,
+            waveform_data=question.waveform_data,
+            duration=3.0,
+            sample_rate=44100
+        )
+
+        # Prepare audio manager
+        self.audio_manager.set_queue([clip])
+        if self.audio_manager.load_clip(clip):
+            self.waveform_view.set_waveform_data(question.waveform_data)
+        else:
+            print(f"[WARN] Gagal load audio {question.id}")
+
+        # Load meme images
+        if not self.meme_overlay.load_memes(question.left_meme, question.right_meme):
+            print(f"[WARN] Gagal load meme images untuk {question.id}")
+
+        # Play audio
+        self._play_audio()
+
+    def _play_audio(self) -> None:
+        """Play audio soal."""
+        self.phase = GamePhase.PLAYING_AUDIO
+        self.current_audio_start_time = time.time()
+
+        # Show memes dengan animasi
+        self.meme_overlay.show_memes(animate=True)
+
+        # Play audio dengan callback
+        self.audio_manager.play(on_finish=self._on_audio_finished)
+
+        print("[AUDIO] Playing...")
+
+    def _on_audio_finished(self) -> None:
+        """Callback ketika audio selesai."""
+        print("[AUDIO] Finished, waiting for answer...")
+        self.phase = GamePhase.WAITING_ANSWER
