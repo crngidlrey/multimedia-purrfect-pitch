@@ -283,3 +283,243 @@ class PurrfectPitchGame:
         else:
             # Reset highlight jika tidak dalam phase playing/waiting
             self.meme_overlay.set_highlight(None)
+
+    def _update(self) -> None:
+        """Update game state."""
+        state = self.game_logic.get_state()
+
+        # Check game over (timer habis atau soal habis)
+        if not state.is_running and self.phase != GamePhase.GAME_OVER:
+            # Stop semua yang sedang berjalan
+            self.audio_manager.stop()
+            self.meme_overlay.hide_memes(animate=False)
+
+            self.phase = GamePhase.GAME_OVER
+            print("\n[GAME] GAME OVER!")
+            print(f"[SCORE] Final score: {state.score}/{state.total_questions}")
+
+        # Update audio manager (check finish callback)
+        self.audio_manager.check_finish()
+
+        # Update meme overlay animations
+        self.meme_overlay.update()
+
+        # Update waveform progress jika audio playing
+        if self.phase == GamePhase.PLAYING_AUDIO and self.audio_manager.is_playing():
+            if self.current_audio_start_time:
+                elapsed = time.time() - self.current_audio_start_time
+                progress = min(1.0, elapsed / 3.0)
+                self.waveform_view.set_playback_progress(progress)
+        else:
+            self.waveform_view.set_playback_progress(0.0)
+
+        # Check feedback timeout
+        if self.phase == GamePhase.SHOW_FEEDBACK:
+            if time.time() - self.feedback_start_time >= self.feedback_duration:
+                self.feedback_message = ""
+                # Cek apakah game masih running sebelum load next question
+                if state.is_running:
+                    self._load_next_question()
+                else:
+                    # Game sudah selesai, langsung ke game over
+                    self.phase = GamePhase.GAME_OVER
+
+    def _render(self, camera_frame: np.ndarray) -> np.ndarray:
+        """
+        Render game UI ke frame.
+
+        Args:
+            camera_frame (np.ndarray): Frame dari kamera
+
+        Returns:
+            np.ndarray: Frame dengan UI overlay
+        """
+        # Resize camera frame untuk fit di kiri
+        cam_h, cam_w = camera_frame.shape[:2]
+        target_cam_w = self.window_width // 2
+        target_cam_h = int(cam_h * (target_cam_w / cam_w))
+
+        camera_resized = cv2.resize(camera_frame, (target_cam_w, target_cam_h))
+
+        # Buat main canvas
+        canvas = np.zeros((self.window_height, self.window_width, 3), dtype=np.uint8)
+        canvas[:] = (30, 30, 30)
+
+        # Place camera feed di kiri
+        cam_y_offset = (self.window_height - target_cam_h) // 2
+        canvas[cam_y_offset:cam_y_offset + target_cam_h, 0:target_cam_w] = camera_resized
+
+        # Draw meme overlay on camera
+        self.meme_overlay.draw(canvas[cam_y_offset:cam_y_offset + target_cam_h, 0:target_cam_w])
+
+        # Right panel: game info
+        right_x = target_cam_w + 20
+        right_y = 50
+
+        state = self.game_logic.get_state()
+
+        # Title
+        cv2.putText(
+            canvas, "PURRFECT PITCH",
+            (right_x, right_y),
+            cv2.FONT_HERSHEY_DUPLEX, 1.2, (100, 200, 255), 3, cv2.LINE_AA
+        )
+
+        right_y += 60
+
+        # Timer
+        timer_text = f"Time: {int(state.remaining_time)}s"
+        timer_color = (0, 255, 255) if state.remaining_time > 10 else (0, 100, 255)
+        cv2.putText(
+            canvas, timer_text,
+            (right_x, right_y),
+            cv2.FONT_HERSHEY_SIMPLEX, 1.0, timer_color, 2, cv2.LINE_AA
+        )
+
+        right_y += 50
+
+        # Score
+        score_text = f"Score: {state.score} / {state.total_questions}"
+        cv2.putText(
+            canvas, score_text,
+            (right_x, right_y),
+            cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 255, 0), 2, cv2.LINE_AA
+        )
+
+        right_y += 80
+
+        # Waveform
+        waveform_w = self.window_width - target_cam_w - 60
+        waveform_h = 120
+        self.waveform_view.draw(canvas, right_x, right_y, waveform_w, waveform_h)
+
+        right_y += waveform_h + 40
+
+        # Status text
+        status_lines = []
+        if self.phase == GamePhase.IDLE:
+            status_lines = ["Press SPACE to start"]
+        elif self.phase == GamePhase.PLAYING_AUDIO:
+            status_lines = ["Listening to the cat sound..."]
+        elif self.phase == GamePhase.WAITING_ANSWER:
+            status_lines = [
+                "Tilt your head LEFT or RIGHT",
+                "to choose the cat!"
+            ]
+        elif self.phase == GamePhase.SHOW_FEEDBACK:
+            status_lines = [self.feedback_message]
+        elif self.phase == GamePhase.GAME_OVER:
+            status_lines = [
+                "GAME OVER!",
+                f"Final Score: {state.score}/{state.total_questions}",
+                "",
+                "Press SPACE to restart",
+                "Press ESC to exit"
+            ]
+
+        for i, line in enumerate(status_lines):
+            color = (0, 255, 0) if "BENAR" in line else (0, 100, 255) if "SALAH" in line else (200, 200, 200)
+            size = 0.9 if "BENAR" in line or "SALAH" in line else 0.7
+            thickness = 2 if "BENAR" in line or "SALAH" in line else 1
+
+            cv2.putText(
+                canvas, line,
+                (right_x, right_y + i * 35),
+                cv2.FONT_HERSHEY_SIMPLEX, size, color, thickness, cv2.LINE_AA
+            )
+
+        # Controls info (bottom)
+        controls = [
+            "SPACE: Start/Restart",
+            "ESC: Exit",
+            "Arrow Keys: Manual Select (fallback)"
+        ]
+
+        ctrl_y = self.window_height - 80
+        for i, ctrl in enumerate(controls):
+            cv2.putText(
+                canvas, ctrl,
+                (20, ctrl_y + i * 25),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (100, 100, 100), 1, cv2.LINE_AA
+            )
+
+        return canvas
+
+    def run(self) -> None:
+        """Main game loop."""
+        print("\n" + "="*60)
+        print("  PURRFECT PITCH - Interactive Cat Sound Matching Game")
+        print("  Tugas Besar Mata Kuliah Multimedia - ITERA")
+        print("="*60)
+        print("\nControls:")
+        print("  SPACE      - Start/Restart game")
+        print("  HEAD TILT  - Select cat (LEFT/RIGHT)")
+        print("  ARROW KEYS - Manual select (fallback)")
+        print("  ESC        - Exit game")
+        print("\n" + "="*60 + "\n")
+
+        # Start face tracker
+        self.face_tracker.start()
+
+        try:
+            while True:
+                # Read camera frame
+                ret, frame = self.face_tracker._cap.read()
+                if not ret:
+                    print("[ERROR] Cannot read camera frame")
+                    break
+
+                # Flip frame (mirror)
+                frame = cv2.flip(frame, 1)
+
+                # Evaluate face tracking
+                face_state = self.face_tracker._evaluate_state(frame)
+
+                # Face tracking callback
+                self._on_face_tracking_update(face_state, frame)
+
+                # Update game logic
+                self._update()
+
+                # Render game UI
+                game_frame = self._render(frame)
+
+                # Show window
+                cv2.imshow("Purrfect Pitch", game_frame)
+
+                # Handle keyboard input
+                key = cv2.waitKey(1) & 0xFF
+
+                if key == 27:  # ESC
+                    print("\n[EXIT] User quit")
+                    break
+                elif key == ord(' '):  # SPACE
+                    if self.phase in (GamePhase.IDLE, GamePhase.GAME_OVER):
+                        self.start_game()
+                elif key == 81 or key == 2:  # LEFT ARROW
+                    if self.phase == GamePhase.WAITING_ANSWER:
+                        self._submit_answer("LEFT")
+                elif key == 83 or key == 3:  # RIGHT ARROW
+                    if self.phase == GamePhase.WAITING_ANSWER:
+                        self._submit_answer("RIGHT")
+
+        except KeyboardInterrupt:
+            print("\n[EXIT] Interrupted by user")
+        finally:
+            # Cleanup
+            print("\n[CLEANUP] Closing game...")
+            self.face_tracker.stop()
+            self.audio_manager.cleanup()
+            cv2.destroyAllWindows()
+            print("[EXIT] Goodbye!")
+
+
+if __name__ == "__main__":
+    try:
+        game = PurrfectPitchGame()
+        game.run()
+    except Exception as e:
+        print(f"\n[FATAL ERROR] {e}")
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)
