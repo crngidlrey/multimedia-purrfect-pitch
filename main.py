@@ -326,7 +326,7 @@ class PurrfectPitchGame:
 
     def _render(self, camera_frame: np.ndarray) -> np.ndarray:
         """
-        Render game UI ke frame.
+        Render game UI ke frame dengan layout modern dan center-aligned.
 
         Args:
             camera_frame (np.ndarray): Frame dari kamera
@@ -352,50 +352,92 @@ class PurrfectPitchGame:
         # Draw meme overlay on camera
         self.meme_overlay.draw(canvas[cam_y_offset:cam_y_offset + target_cam_h, 0:target_cam_w])
 
-        # Right panel: game info
-        right_x = target_cam_w + 20
-        right_y = 50
-
+        # Right panel - PERFECTLY CENTERED LAYOUT
         state = self.game_logic.get_state()
 
-        # Title
+        # Webcam width & right panel calculation
+        webcam_width = target_cam_w
+        right_w = self.window_width - webcam_width
+        right_center_x = webcam_width + right_w // 2
+
+        # Layout spacing (Y positions)
+        title_y = 40
+        info_y = title_y + 60
+        waveform_y = info_y + 80
+        waveform_w = 500  # Fixed width
+        waveform_h = 150  # Fixed height
+        status_y = waveform_y + waveform_h + 60  # Status text start position
+        button_y = self.window_height - 180  # Buttons near bottom
+
+        # === TITLE (PERFECTLY CENTERED) ===
+        title = "PURRFECT PITCH"
+        title_size = cv2.getTextSize(title, cv2.FONT_HERSHEY_DUPLEX, 1.2, 3)[0]
+        title_x = right_center_x - title_size[0] // 2
         cv2.putText(
-            canvas, "PURRFECT PITCH",
-            (right_x, right_y),
+            canvas, title,
+            (title_x, title_y),
             cv2.FONT_HERSHEY_DUPLEX, 1.2, (100, 200, 255), 3, cv2.LINE_AA
         )
 
-        right_y += 60
+        # === INFO ROW: Time & Score (PERFECTLY CENTERED, SIDE BY SIDE) ===
+        timer_text = f"Time: {int(state.remaining_time)}s"
+        score_text = f"Score: {state.score}/{state.total_questions}"
 
         # Timer
-        timer_text = f"Time: {int(state.remaining_time)}s"
         timer_color = (0, 255, 255) if state.remaining_time > 10 else (0, 100, 255)
-        cv2.putText(
-            canvas, timer_text,
-            (right_x, right_y),
-            cv2.FONT_HERSHEY_SIMPLEX, 1.0, timer_color, 2, cv2.LINE_AA
-        )
-
-        right_y += 50
+        timer_size = cv2.getTextSize(timer_text, cv2.FONT_HERSHEY_SIMPLEX, 0.8, 2)[0]
 
         # Score
-        score_text = f"Score: {state.score} / {state.total_questions}"
+        score_size = cv2.getTextSize(score_text, cv2.FONT_HERSHEY_SIMPLEX, 0.8, 2)[0]
+
+        # Total width kedua info dengan spacing
+        spacing = 40
+        total_info_width = timer_size[0] + spacing + score_size[0]
+
+        # Posisi timer (kiri dari center)
+        timer_x = right_center_x - total_info_width // 2
         cv2.putText(
-            canvas, score_text,
-            (right_x, right_y),
-            cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 255, 0), 2, cv2.LINE_AA
+            canvas, timer_text,
+            (timer_x, info_y),
+            cv2.FONT_HERSHEY_SIMPLEX, 0.8, timer_color, 2, cv2.LINE_AA
         )
 
-        right_y += 80
+        # Posisi score (kanan dari center)
+        score_x = timer_x + timer_size[0] + spacing
+        cv2.putText(
+            canvas, score_text,
+            (score_x, info_y),
+            cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2, cv2.LINE_AA
+        )
 
-        # Waveform
-        waveform_w = self.window_width - target_cam_w - 60
-        waveform_h = 120
-        self.waveform_view.draw(canvas, right_x, right_y, waveform_w, waveform_h)
+        # === WAVEFORM BOX (PERFECTLY CENTERED, dengan PANEL TRANSPARAN) ===
+        # Calculate waveform X position (centered in right panel)
+        waveform_x = right_center_x - waveform_w // 2
 
-        right_y += waveform_h + 40
+        # Buat overlay transparan untuk waveform background
+        overlay = canvas.copy()
+        cv2.rectangle(
+            overlay,
+            (waveform_x - 10, waveform_y - 10),
+            (waveform_x + waveform_w + 10, waveform_y + waveform_h + 10),
+            (0, 0, 0),
+            -1
+        )
+        # Alpha blend
+        alpha = 0.7
+        canvas[waveform_y - 10:waveform_y + waveform_h + 10, waveform_x - 10:waveform_x + waveform_w + 10] = \
+            cv2.addWeighted(
+                canvas[waveform_y - 10:waveform_y + waveform_h + 10, waveform_x - 10:waveform_x + waveform_w + 10],
+                1 - alpha,
+                overlay[waveform_y - 10:waveform_y + waveform_h + 10, waveform_x - 10:waveform_x + waveform_w + 10],
+                alpha,
+                0
+            )
 
-        # Status text
+        # Draw waveform (tanpa border karena sudah ada background panel)
+        self.waveform_view.draw(canvas, waveform_x, waveform_y, waveform_w, waveform_h, show_border=False)
+
+        # === RESULT / STATUS TEXT (CENTER) ===
         status_lines = []
         if self.phase == GamePhase.IDLE:
             status_lines = ["Press SPACE to start"]
@@ -411,36 +453,75 @@ class PurrfectPitchGame:
         elif self.phase == GamePhase.GAME_OVER:
             status_lines = [
                 "GAME OVER!",
-                f"Final Score: {state.score}/{state.total_questions}",
-                "",
-                "Press SPACE to restart",
-                "Press ESC to exit"
+                f"Final Score: {state.score}/{state.total_questions}"
             ]
 
         for i, line in enumerate(status_lines):
-            color = (0, 255, 0) if "BENAR" in line else (0, 100, 255) if "SALAH" in line else (200, 200, 200)
-            size = 0.9 if "BENAR" in line or "SALAH" in line else 0.7
-            thickness = 2 if "BENAR" in line or "SALAH" in line else 1
+            # Determine color and size
+            if "BENAR" in line:
+                color = (0, 255, 0)
+                size = 1.2
+                thickness = 3
+            elif "SALAH" in line:
+                color = (0, 100, 255)
+                size = 1.2
+                thickness = 3
+            elif "GAME OVER" in line:
+                color = (0, 100, 255)
+                size = 1.0
+                thickness = 2
+            else:
+                color = (200, 200, 200)
+                size = 0.7
+                thickness = 1
+
+            text_size = cv2.getTextSize(line, cv2.FONT_HERSHEY_SIMPLEX, size, thickness)[0]
+            text_x = right_center_x - text_size[0] // 2
 
             cv2.putText(
                 canvas, line,
-                (right_x, right_y + i * 35),
+                (text_x, status_y + i * 40),
                 cv2.FONT_HERSHEY_SIMPLEX, size, color, thickness, cv2.LINE_AA
             )
 
-        # Controls info (bottom)
+        # === BUTTONS (PERFECTLY CENTERED) - Only on GAME_OVER or IDLE ===
+        if self.phase in (GamePhase.GAME_OVER, GamePhase.IDLE):
+            button_spacing = 20
+            restart_text = "[  Restart  ]"
+            exit_text = "[  Exit  ]"
+
+            restart_size = cv2.getTextSize(restart_text, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 1)[0]
+            exit_size = cv2.getTextSize(exit_text, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 1)[0]
+
+            total_button_width = restart_size[0] + button_spacing + exit_size[0]
+            restart_x = right_center_x - total_button_width // 2
+            exit_x = restart_x + restart_size[0] + button_spacing
+
+            cv2.putText(
+                canvas, restart_text,
+                (restart_x, button_y),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.6, (100, 200, 255), 1, cv2.LINE_AA
+            )
+
+            cv2.putText(
+                canvas, exit_text,
+                (exit_x, button_y),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 100, 100), 1, cv2.LINE_AA
+            )
+
+        # === CONTROLS INFO (BOTTOM, CENTER) ===
         controls = [
-            "SPACE: Start/Restart",
-            "ESC: Exit",
-            "Arrow Keys: Manual Select (fallback)"
+            "SPACE: Start/Restart   |   ESC: Exit   |   Arrow Keys: Manual Select"
         ]
 
-        ctrl_y = self.window_height - 80
-        for i, ctrl in enumerate(controls):
+        ctrl_y = self.window_height - 30
+        for ctrl in controls:
+            ctrl_size = cv2.getTextSize(ctrl, cv2.FONT_HERSHEY_SIMPLEX, 0.45, 1)[0]
+            ctrl_x = (self.window_width - ctrl_size[0]) // 2
             cv2.putText(
                 canvas, ctrl,
-                (20, ctrl_y + i * 25),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (100, 100, 100), 1, cv2.LINE_AA
+                (ctrl_x, ctrl_y),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.45, (100, 100, 100), 1, cv2.LINE_AA
             )
 
         return canvas
