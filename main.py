@@ -37,3 +37,74 @@ class GamePhase(Enum):
     WAITING_ANSWER = "waiting_answer"
     SHOW_FEEDBACK = "show_feedback"
     GAME_OVER = "game_over"
+
+
+class PurrfectPitchGame:
+    """
+    Main game orchestrator.
+    Menghubungkan semua modul dan mengatur game flow.
+    """
+
+    def __init__(
+        self,
+        metadata_path: Path = Path("asset_output/game_metadata.json"),
+        window_width: int = 1280,
+        window_height: int = 720
+    ):
+        """
+        Inisialisasi game.
+
+        Args:
+            metadata_path (Path): Path ke file metadata game
+            window_width (int): Lebar window game
+            window_height (int): Tinggi window game
+        """
+        self.window_width = window_width
+        self.window_height = window_height
+        self.metadata_path = metadata_path
+
+        # Game phase
+        self.phase = GamePhase.IDLE
+        self.feedback_message = ""
+        self.feedback_start_time = 0.0
+        self.feedback_duration = 2.0
+
+        # Answer tracking
+        self.answer_submitted = False
+
+        # Load metadata
+        self.metadata = self._load_metadata()
+        if not self.metadata:
+            raise RuntimeError(f"Gagal load metadata dari {metadata_path}")
+
+        # Inisialisasi modul
+        print("[INIT] Inisialisasi Face Tracker...")
+        self.face_tracker = AngleFaceTracker(
+            tilt_threshold=5.0,
+            hold_time=0.0,
+            cooldown_time=0.5
+        )
+
+        print("[INIT] Inisialisasi Audio Manager...")
+        self.audio_manager = AudioManager(output_folder=Path("asset_output"))
+
+        print("[INIT] Prepare questions...")
+        self.questions = self._prepare_questions()
+
+        print("[INIT] Inisialisasi Game Logic...")
+        self.game_logic = GameLogic(self.questions, duration_seconds=30.0)
+
+        print("[INIT] Inisialisasi GUI components...")
+        self.meme_overlay = MemeOverlay(
+            offset_x=200,
+            offset_y=-80,
+            sprite_size=(180, 180)
+        )
+
+        self.waveform_view = WaveformView(style="bars")
+
+        # State tracking
+        self.current_audio_start_time: Optional[float] = None
+        self.last_tilt_state = "CENTER"
+
+        print("[INIT] Game ready!")
