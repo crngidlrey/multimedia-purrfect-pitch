@@ -108,3 +108,43 @@ class PurrfectPitchGame:
         self.last_tilt_state = "CENTER"
 
         print("[INIT] Game ready!")
+
+    def _load_metadata(self) -> dict:
+        """Load metadata game dari JSON."""
+        if not self.metadata_path.exists():
+            print(f"[ERROR] Metadata file tidak ditemukan: {self.metadata_path}")
+            return {}
+
+        with open(self.metadata_path, "r", encoding="utf-8") as f:
+            return json.load(f)
+
+    def _prepare_questions(self) -> List[Question]:
+        """
+        Prepare questions dari metadata.
+        Load audio clips dan generate waveform.
+        """
+        questions = []
+
+        for q_data in self.metadata.get("questions", []):
+            audio_path = Path(q_data["audio_path"])
+
+            # Generate waveform
+            waveform_data = audio_processing.generate_waveform_data(
+                audio_path=audio_path,
+                num_samples=512
+            )
+
+            # Buat Question object
+            question = Question(
+                id=q_data["id"],
+                audio_path=audio_path,
+                waveform_data=waveform_data,
+                left_meme=Path(q_data["left_meme"]),
+                right_meme=Path(q_data["right_meme"]),
+                correct_side=q_data["correct_side"]
+            )
+
+            questions.append(question)
+
+        print(f"[INFO] Loaded {len(questions)} questions")
+        return questions
