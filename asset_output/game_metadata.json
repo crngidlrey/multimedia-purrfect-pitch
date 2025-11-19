@@ -1,0 +1,147 @@
+{
+  "version": "1.0",
+  "total_questions": 14,
+  "game_duration_seconds": 30,
+  "questions": [
+    {
+      "id": "q1",
+      "audio_id": 10,
+      "audio_path": "asset_output/audio-kucing10_pitch-5.wav",
+      "duration": 8.6,
+      "left_meme": "asset/kucing14.png",
+      "right_meme": "asset/kucing10.png",
+      "correct_side": "RIGHT",
+      "correct_image": "asset/kucing10.png"
+    },
+    {
+      "id": "q2",
+      "audio_id": 11,
+      "audio_path": "asset_output/audio-kucing11_pitch-5.wav",
+      "duration": 12.82,
+      "left_meme": "asset/kucing11.png",
+      "right_meme": "asset/kucing13.png",
+      "correct_side": "LEFT",
+      "correct_image": "asset/kucing11.png"
+    },
+    {
+      "id": "q3",
+      "audio_id": 12,
+      "audio_path": "asset_output/audio-kucing12_pitch-5.wav",
+      "duration": 5.48,
+      "left_meme": "asset/kucing12.png",
+      "right_meme": "asset/kucing2.png",
+      "correct_side": "LEFT",
+      "correct_image": "asset/kucing12.png"
+    },
+    {
+      "id": "q4",
+      "audio_id": 13,
+      "audio_path": "asset_output/audio-kucing13_pitch-5.wav",
+      "duration": 6.5,
+      "left_meme": "asset/kucing1.png",
+      "right_meme": "asset/kucing13.png",
+      "correct_side": "RIGHT",
+      "correct_image": "asset/kucing13.png"
+    },
+    {
+      "id": "q5",
+      "audio_id": 14,
+      "audio_path": "asset_output/audio-kucing14_pitch-5.wav",
+      "duration": 8.31,
+      "left_meme": "asset/kucing8.png",
+      "right_meme": "asset/kucing14.png",
+      "correct_side": "RIGHT",
+      "correct_image": "asset/kucing14.png"
+    },
+    {
+      "id": "q6",
+      "audio_id": 1,
+      "audio_path": "asset_output/audio-kucing1_pitch-5.wav",
+      "duration": 7.6,
+      "left_meme": "asset/kucing1.png",
+      "right_meme": "asset/kucing2.png",
+      "correct_side": "LEFT",
+      "correct_image": "asset/kucing1.png"
+    },
+    {
+      "id": "q7",
+      "audio_id": 2,
+      "audio_path": "asset_output/audio-kucing2_pitch-5.wav",
+      "duration": 5.1,
+      "left_meme": "asset/kucing2.png",
+      "right_meme": "asset/kucing9.png",
+      "correct_side": "LEFT",
+      "correct_image": "asset/kucing2.png"
+    },
+    {
+      "id": "q8",
+      "audio_id": 3,
+      "audio_path": "asset_output/audio-kucing3_pitch-5.wav",
+      "duration": 6.5,
+      "left_meme": "asset/kucing3.png",
+      "right_meme": "asset/kucing4.png",
+      "correct_side": "LEFT",
+      "correct_image": "asset/kucing3.png"
+    },
+    {
+      "id": "q9",
+      "audio_id": 4,
+      "audio_path": "asset_output/audio-kucing4_pitch-5.wav",
+      "duration": 5.2,
+      "left_meme": "asset/kucing7.png",
+      "right_meme": "asset/kucing4.png",
+      "correct_side": "RIGHT",
+      "correct_image": "asset/kucing4.png"
+    },
+    {
+      "id": "q10",
+      "audio_id": 5,
+      "audio_path": "asset_output/audio-kucing5_pitch-5.wav",
+      "duration": 6.7,
+      "left_meme": "asset/kucing5.png",
+      "right_meme": "asset/kucing2.png",
+      "correct_side": "LEFT",
+      "correct_image": "asset/kucing5.png"
+    },
+    {
+      "id": "q11",
+      "audio_id": 6,
+      "audio_path": "asset_output/audio-kucing6_pitch-5.wav",
+      "duration": 8.4,
+      "left_meme": "asset/kucing14.png",
+      "right_meme": "asset/kucing6.png",
+      "correct_side": "RIGHT",
+      "correct_image": "asset/kucing6.png"
+    },
+    {
+      "id": "q12",
+      "audio_id": 7,
+      "audio_path": "asset_output/audio-kucing7_pitch-5.wav",
+      "duration": 5.8,
+      "left_meme": "asset/kucing7.png",
+      "right_meme": "asset/kucing3.png",
+      "correct_side": "LEFT",
+      "correct_image": "asset/kucing7.png"
+    },
+    {
+      "id": "q13",
+      "audio_id": 8,
+      "audio_path": "asset_output/audio-kucing8_pitch-5.wav",
+      "duration": 3.9,
+      "left_meme": "asset/kucing8.png",
+      "right_meme": "asset/kucing11.png",
+      "correct_side": "LEFT",
+      "correct_image": "asset/kucing8.png"
+    },
+    {
+      "id": "q14",
+      "audio_id": 9,
+      "audio_path": "asset_output/audio-kucing9_pitch-5.wav",
+      "duration": 5.4,
+      "left_meme": "asset/kucing9.png",
+      "right_meme": "asset/kucing3.png",
+      "correct_side": "LEFT",
+      "correct_image": "asset/kucing9.png"
+    }
+  ]
+}
