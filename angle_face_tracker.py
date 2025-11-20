@@ -26,9 +26,9 @@ if sys.platform == 'win32':
 
 
 # Thresholds berdasarkan SUDUT (derajat)
-TILT_ANGLE_THRESHOLD = 8.0  # Sensitif tapi stabil - 8°
+TILT_ANGLE_THRESHOLD = 5.0  # Sensitif - 5°
 HOLD_TIME = 0.0              # INSTANT - TANPA HOLD!
-COOLDOWN_TIME = 0.3          # Cooldown singkat (cukup untuk prevent double-trigger)
+COOLDOWN_TIME = 0.5          # Cooldown untuk prevent false positive - 0.5s
 
 
 @dataclass
