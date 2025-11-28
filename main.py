@@ -102,7 +102,7 @@ class PurrfectPitchGame:
         self.meme_overlay = MemeOverlay(
             offset_x=200,
             offset_y=-80,
-            sprite_size=(180, 180)
+            sprite_size=(240, 240)
         )
 
         self.waveform_view = WaveformView(style="bars")
@@ -110,6 +110,11 @@ class PurrfectPitchGame:
         # State tracking
         self.current_audio_start_time: Optional[float] = None
         self.last_tilt_state = "CENTER"
+        # Smoothed head position to reduce jitter (x, y) in window coordinates
+        self._smoothed_head: Optional[tuple] = None
+        # Scheduled next-question timing (to allow a brief smooth transition)
+        self._scheduled_next_question_time: Optional[float] = None
+        self._scheduled_end_game: bool = False
         # Countdown state
         self.countdown_start_time: Optional[float] = None
         self.countdown_duration: int = 3
@@ -295,16 +300,25 @@ class PurrfectPitchGame:
         self.feedback_message = "BENAR!" if is_correct else "SALAH!"
         print(f"[FEEDBACK] {self.feedback_message}")
 
-        # Hide memes and immediately load next question (no delay)
+        # Hide memes instantly and schedule the next question to make
+        # transitions feel smooth (no fade, but a short delay so the user sees feedback)
+        transition_delay = 0.25  # seconds; tune for responsiveness
         self.meme_overlay.hide_memes(animate=False)
 
-        # Immediately proceed to next question (stop audio already done above)
-        # This removes the waiting/show-feedback pause and makes transitions faster.
         state = self.game_logic.get_state()
         if state.is_running:
-            self._load_next_question()
+            # schedule next question after transition_delay
+            self._scheduled_next_question_time = time.time() + transition_delay
+            self._scheduled_end_game = False
+            # show feedback briefly (phase) while transitioning
+            self.phase = GamePhase.SHOW_FEEDBACK
+            self.feedback_start_time = time.time()
         else:
-            self.phase = GamePhase.GAME_OVER
+            # schedule game over popup after short delay so hide animation can play
+            self._scheduled_next_question_time = time.time() + transition_delay
+            self._scheduled_end_game = True
+            self.phase = GamePhase.SHOW_FEEDBACK
+            self.feedback_start_time = time.time()
 
     def _on_face_tracking_update(self, state: FaceTrackerState, frame: np.ndarray) -> None:
         """
@@ -317,6 +331,9 @@ class PurrfectPitchGame:
         # Update head position for meme overlay.
         # The face tracker returns coordinates in the camera frame size; we need to
         # scale them to the fullscreen canvas size used in _render.
+        # Position the meme overlay to follow the detected face.
+        # Convert face center from capture frame coords -> window coords, and pass scaled face_size.
+        # Apply a small EMA smoothing to reduce jitter.
         frame_h, frame_w = frame.shape[:2]
         if state.face_detected and getattr(state, 'face_center', None) is not None:
             fx, fy = state.face_center
@@ -324,23 +341,38 @@ class PurrfectPitchGame:
             # Scale coordinates from capture frame -> window canvas
             sx = self.window_width / frame_w
             sy = self.window_height / frame_h
-            head_x = int(fx * sx)
-            head_y = int(fy * sy)
+            head_x = fx * sx
+            head_y = fy * sy
 
-            # If face size is available, scale offset_x based on face width so memes sit near ears
+            # Scaled face size when available
             if getattr(state, 'face_size', None) is not None:
                 face_w, face_h = state.face_size
                 scaled_face_w = int(face_w * sx)
-                # Set offset_x to ~0.6 * face width, clamp to reasonable range
-                new_offset_x = max(80, min(int(scaled_face_w * 0.6), self.window_width // 3))
-                self.meme_overlay.offset_x = new_offset_x
+                scaled_face_h = int(face_h * sy)
+            else:
+                scaled_face_w = None
+                scaled_face_h = None
 
-            self.meme_overlay.set_head_position(head_x, head_y)
-        elif state.face_detected:
-            # Fallback: center of window canvas
-            head_x = self.window_width // 2
-            head_y = self.window_height // 2
-            self.meme_overlay.set_head_position(head_x, head_y)
+            # EMA smoothing: alpha closer to 1 -> more responsive; 0.6 is a reasonable tradeoff
+            alpha = 0.6
+            if self._smoothed_head is None:
+                sx_pos, sy_pos = int(head_x), int(head_y)
+            else:
+                prev_x, prev_y = self._smoothed_head
+                sx_pos = int(prev_x * (1 - alpha) + head_x * alpha)
+                sy_pos = int(prev_y * (1 - alpha) + head_y * alpha)
+
+            self._smoothed_head = (sx_pos, sy_pos)
+
+            # Provide face_size when available so overlay can compute temple anchors
+            if scaled_face_w is not None and scaled_face_h is not None:
+                self.meme_overlay.set_head_position(sx_pos, sy_pos, face_size=(scaled_face_w, scaled_face_h))
+            else:
+                self.meme_overlay.set_head_position(sx_pos, sy_pos)
+        else:
+            # If no face detected, keep previous smoothed head (do not change overlay suddenly)
+            if self._smoothed_head is not None:
+                self.meme_overlay.set_head_position(int(self._smoothed_head[0]), int(self._smoothed_head[1]))
 
         # Update highlight berdasarkan tilt state
         if self.phase in (GamePhase.PLAYING_AUDIO, GamePhase.WAITING_ANSWER):
@@ -359,6 +391,25 @@ class PurrfectPitchGame:
     def _update(self) -> None:
         """Update game state."""
         state = self.game_logic.get_state()
+
+        # Check scheduled next-question/game-over timing
+        if self._scheduled_next_question_time is not None:
+            if time.time() >= self._scheduled_next_question_time:
+                # Clear scheduled time first to avoid re-entrancy
+                sched_end = self._scheduled_end_game
+                self._scheduled_next_question_time = None
+                self._scheduled_end_game = False
+                if sched_end:
+                    # Transition to game over popup
+                    self.phase = GamePhase.GAME_OVER
+                    self.popup_start_time = time.time()
+                    print("\n[GAME] GAME OVER! (scheduled)")
+                    print(f"[SCORE] Final score: {state.score}/{state.total_questions}")
+                else:
+                    # Load next question
+                    self._load_next_question()
+                    # return early since _load_next_question resets relevant state
+                    return
 
         # START_POPUP: wait for player input (SPACE) to begin countdown
 

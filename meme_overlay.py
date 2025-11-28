@@ -26,7 +26,7 @@ class MemeSprite:
         image_path: Path,
         side: str,
         target_size: Tuple[int, int] = (150, 150),
-        highlight_zoom: float = 1.12,  # faktor pembesaran saat highlight
+        highlight_zoom: float = 1.15,  # sedikit lebih besar saat highlight
     ):
         """
         Inisialisasi meme sprite.
@@ -67,6 +67,9 @@ class MemeSprite:
         self.is_highlighted = False
         self.animation_start_time: Optional[float] = None
         self.target_scale = 0.0
+        # Opacity (0.0 - 1.0) untuk efek fade in/out
+        # Record start scale for animation interpolation
+        self._start_scale: float = self.scale
         
     def _resize_keep_aspect(self, img: np.ndarray, target_size: Tuple[int, int]) -> np.ndarray:
         """
@@ -99,9 +102,11 @@ class MemeSprite:
             target_scale (float): Target scale (1.0 = full size, 0.0 = hidden)
         """
         self.target_scale = max(0.0, min(1.0, target_scale))
+        # record start value for smooth interpolation
+        self._start_scale = float(self.scale)
         self.animation_start_time = time.time()
     
-    def update_animation(self, duration: float = 0.3) -> bool:
+    def update_animation(self, duration: float = 0.1) -> bool:
         """
         Update state animasi.
         
@@ -113,22 +118,22 @@ class MemeSprite:
         """
         if self.animation_start_time is None:
             return False
-        
+
         elapsed = time.time() - self.animation_start_time
         progress = min(1.0, elapsed / duration)
-        
+
         # Ease-out animation (smooth deceleration)
-        progress = 1 - (1 - progress) ** 3
-        
-        # Interpolate ke target scale
-        self.scale = self.scale + (self.target_scale - self.scale) * progress
-        
+        ease = 1 - (1 - progress) ** 3
+
+        # Interpolate scale from recorded start value
+        self.scale = float(self._start_scale + (self.target_scale - self._start_scale) * ease)
+
         # Jika sudah mencapai target, stop animasi
         if progress >= 1.0:
-            self.scale = self.target_scale
+            self.scale = float(self.target_scale)
             self.animation_start_time = None
             return False
-        
+
         return True
     
     def set_highlight(self, highlighted: bool) -> None:
@@ -168,37 +173,11 @@ class MemeSprite:
         # Pastikan BGRA
         if scaled_img.shape[2] == 3:
             scaled_img = cv2.cvtColor(scaled_img, cv2.COLOR_BGR2BGRA)
-        
-        # Apply highlight effect (outline mengikuti bentuk gambar + brightness)
-        if self.is_highlighted:
-            # Buat mask alpha (0/255)
-            alpha_mask = scaled_img[:, :, 3].copy()
-            if alpha_mask.max() == 0:
-                # Jika tidak ada alpha (semua 0), buat mask dari luminance (anggap non-black adalah objek)
-                gray = cv2.cvtColor(scaled_img[:, :, :3], cv2.COLOR_BGR2GRAY)
-                _, alpha_mask = cv2.threshold(gray, 10, 255, cv2.THRESH_BINARY)
-            
-            # Buat border mask dengan dilasi - menghasilkan outline mengikuti bentuk
-            border_thickness = max(2, int(min(scaled_w, scaled_h) * 0.035))  # tebal relatif ke ukuran
-            kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (border_thickness*2+1, border_thickness*2+1))
-            dilated = cv2.dilate(alpha_mask, kernel, iterations=1)
-            border_mask = cv2.subtract(dilated, alpha_mask)  # area outline (255)
-            
-            # Warna border (BGR) - kuning
-            border_color_bgr = (0, 255, 255)
-            # Buat layer border BGR
-            border_layer = np.zeros_like(scaled_img[:, :, :3], dtype=np.uint8)
-            for c in range(3):
-                border_layer[:, :, c] = border_color_bgr[c]
-            
-            # Gabungkan border ke gambar berdasarkan border_mask
-            border_alpha = (border_mask / 255.0).astype(np.float32)[:, :, None]
-            scaled_img[:, :, :3] = (border_alpha * border_layer.astype(np.float32) + (1 - border_alpha) * scaled_img[:, :, :3].astype(np.float32)).astype(np.uint8)
-            
-            # Tingkatkan brightness sedikit pada area objek (bukan border)
-            obj_mask = (alpha_mask > 0).astype(np.float32)[:, :, None]
-            scaled_img[:, :, :3] = np.clip(scaled_img[:, :, :3].astype(np.float32) * (1.08 + 0.12 * obj_mask), 0, 255).astype(np.uint8)
-        
+
+        # Ensure BGRA
+        if scaled_img.shape[2] == 3:
+            scaled_img = cv2.cvtColor(scaled_img, cv2.COLOR_BGR2BGRA)
+
         return scaled_img
 
 
@@ -211,7 +190,7 @@ class MemeOverlay:
         self,
         offset_x: int = 180,
         offset_y: int = -50,
-        sprite_size: Tuple[int, int] = (150, 150)
+        sprite_size: Tuple[int, int] = (240, 240)
     ):
         """
         Inisialisasi meme overlay.
@@ -230,6 +209,9 @@ class MemeOverlay:
         
         # State untuk head position (center of face)
         self.head_position: Optional[Tuple[int, int]] = None
+        # Optional face size in pixels (width, height) in the same coordinate space as head_position.
+        # When provided, the overlay will position memes at the temple (pelipis) using this size.
+        self.face_size: Optional[Tuple[int, int]] = None
 
     def load_memes(self, left_image_path: Path, right_image_path: Path) -> bool:
         """
@@ -291,7 +273,7 @@ class MemeOverlay:
             else:
                 self.right_sprite.scale = 0.0
 
-    def set_head_position(self, x: int, y: int) -> None:
+    def set_head_position(self, x: int, y: int, face_size: Optional[Tuple[int, int]] = None) -> None:
         """
         Set posisi kepala untuk anchor point sprite.
         
@@ -300,6 +282,11 @@ class MemeOverlay:
             y (int): Koordinat Y center kepala
         """
         self.head_position = (x, y)
+        # Store face size (width, height) when available so draw() can compute temple anchors
+        if face_size is not None:
+            self.face_size = face_size
+        else:
+            self.face_size = None
 
     def set_highlight(self, side: Optional[str]) -> None:
         """
@@ -336,23 +323,58 @@ class MemeOverlay:
             return
         
         head_x, head_y = self.head_position
-        
+        # If face size is known, position sprites at the temple (pelipis) relative to face size.
+        # Otherwise fallback to using configured offsets.
+        use_temple = self.face_size is not None
+
         # Gambar sprite kiri
         if self.left_sprite:
             left_img = self.left_sprite.get_rendered_image()
             if left_img is not None:
-                # Hitung posisi sprite kiri (di kiri kepala)
-                sprite_x = head_x - self.offset_x - left_img.shape[1] // 2
-                sprite_y = head_y + self.offset_y - left_img.shape[0] // 2
+                if use_temple and self.face_size:
+                    face_w, face_h = self.face_size
+                    # Scale visual sprite size relative to face width so it shrinks when head is far
+                    # Preferred sizing: a bit smaller than face width so the meme fits near the temple.
+                    # Multiplier and bounds chosen for balanced appearance across webcams.
+                    desired_w = max(80, min(300, int(face_w * 0.85)))
+                    # Maintain aspect ratio of left_img
+                    if left_img.shape[1] > 0 and left_img.shape[1] != desired_w:
+                        scale_factor = desired_w / float(left_img.shape[1])
+                        new_h = max(1, int(left_img.shape[0] * scale_factor))
+                        left_img = cv2.resize(left_img, (desired_w, new_h), interpolation=cv2.INTER_AREA)
+
+                    # temple offset ~ 0.48 * face width, vertical moved further up to forehead/hairline
+                    temple_dx = max(18, int(face_w * 0.50))
+                    temple_dy = -max(18, int(face_h * 0.70))
+                    sprite_x = head_x - temple_dx - left_img.shape[1] // 2
+                    sprite_y = head_y + temple_dy - left_img.shape[0] // 2
+                else:
+                    # Hitung posisi sprite kiri (di kiri kepala)
+                    sprite_x = head_x - self.offset_x - left_img.shape[1] // 2
+                    sprite_y = head_y + self.offset_y - left_img.shape[0] // 2
                 self._draw_sprite(frame, left_img, sprite_x, sprite_y)
         
         # Gambar sprite kanan
         if self.right_sprite:
             right_img = self.right_sprite.get_rendered_image()
             if right_img is not None:
-                # Hitung posisi sprite kanan (di kanan kepala)
-                sprite_x = head_x + self.offset_x - right_img.shape[1] // 2
-                sprite_y = head_y + self.offset_y - right_img.shape[0] // 2
+                if use_temple and self.face_size:
+                    face_w, face_h = self.face_size
+                    # Preferred sizing for right sprite as well
+                    desired_w = max(80, min(300, int(face_w * 0.85)))
+                    if right_img.shape[1] > 0 and right_img.shape[1] != desired_w:
+                        scale_factor = desired_w / float(right_img.shape[1])
+                        new_h = max(1, int(right_img.shape[0] * scale_factor))
+                        right_img = cv2.resize(right_img, (desired_w, new_h), interpolation=cv2.INTER_AREA)
+
+                    temple_dx = max(18, int(face_w * 0.50))
+                    temple_dy = -max(18, int(face_h * 0.70))
+                    sprite_x = head_x + temple_dx - right_img.shape[1] // 2
+                    sprite_y = head_y + temple_dy - right_img.shape[0] // 2
+                else:
+                    # Hitung posisi sprite kanan (di kanan kepala)
+                    sprite_x = head_x + self.offset_x - right_img.shape[1] // 2
+                    sprite_y = head_y + self.offset_y - right_img.shape[0] // 2
                 self._draw_sprite(frame, right_img, sprite_x, sprite_y)
 
     def _draw_sprite(self, frame: np.ndarray, sprite: np.ndarray, x: int, y: int) -> None:
