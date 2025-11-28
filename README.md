@@ -106,8 +106,8 @@ multimedia-purrfect-pitch/
 
 **Mode Face Tracking** (default):
 - `SPACE` - Mulai/Restart game
-- **Miringkan kepala KIRI** (> 8°) → Pilih kiri
-- **Miringkan kepala KANAN** (> 8°) → Pilih kanan
+- **Miringkan kepala KIRI** (> 12°) → Pilih kiri
+- **Miringkan kepala KANAN** (> 12°) → Pilih kanan
 - `ESC` - Keluar
 
 **Mode Keyboard** (fallback):
@@ -118,11 +118,11 @@ multimedia-purrfect-pitch/
 
 1. Tekan `SPACE` untuk mulai
 2. Dengarkan audio kucing
-3. Tunggu audio selesai
+3. Tunggu audio selesai (opsional)
 4. Pilih gambar dengan head tilt atau keyboard
-5. Dapat feedback (✅/❌)
+5. Dapat feedback (benar/salah)
 6. Soal berikutnya muncul otomatis
-7. Game over setelah 30 detik
+7. Game over setelah 45 detik
 
 ---
 
