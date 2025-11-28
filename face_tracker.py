@@ -13,7 +13,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import math
 import time
-from typing import Callable, Optional
+from typing import Callable, Optional, Tuple
 
 import cv2
 import mediapipe as mp
@@ -31,6 +31,10 @@ class FaceTrackerState:
     tilt_state: str  # LEFT, RIGHT, CENTER, NO_FACE
     tilt_confirmed: bool
     timestamp: float
+    # Center of detected face in frame coordinates (x, y). None if no face.
+    face_center: Optional[Tuple[int, int]] = None
+    # Approximate face bounding box size (width, height) in pixels (None if no face)
+    face_size: Optional[Tuple[int, int]] = None
 
 
 class FaceTracker:
@@ -101,6 +105,7 @@ class FaceTracker:
                 tilt_state="NO_FACE",
                 tilt_confirmed=False,
                 timestamp=now,
+                face_center=None,
             )
 
         landmarks = results.multi_face_landmarks[0].landmark
@@ -129,12 +134,26 @@ class FaceTracker:
         else:
             self._tilt_start = None
 
+        # Compute approximate face center from landmarks (min/max of landmark coords)
+        xs = [int(p.x * width) for p in landmarks]
+        ys = [int(p.y * height) for p in landmarks]
+        if xs and ys:
+            minx, maxx = min(xs), max(xs)
+            miny, maxy = min(ys), max(ys)
+            face_center = ((minx + maxx) // 2, (miny + maxy) // 2)
+            face_size = (maxx - minx, maxy - miny)
+        else:
+            face_center = None
+            face_size = None
+
         return FaceTrackerState(
             face_detected=True,
             roll_deg=roll_deg,
             tilt_state=self._tilt_state,
             tilt_confirmed=confirmed,
             timestamp=now,
+            face_center=face_center,
+            face_size=face_size,
         )
 
     def run(
