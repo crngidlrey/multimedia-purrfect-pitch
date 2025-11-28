@@ -17,6 +17,7 @@ import time
 from pathlib import Path
 from typing import Optional, List
 from enum import Enum
+import math
 
 import cv2
 import numpy as np
@@ -36,6 +37,8 @@ class GamePhase(Enum):
     PLAYING_AUDIO = "playing_audio"
     WAITING_ANSWER = "waiting_answer"
     SHOW_FEEDBACK = "show_feedback"
+    START_POPUP = "start_popup"
+    COUNTDOWN = "countdown"
     GAME_OVER = "game_over"
 
 
@@ -63,8 +66,8 @@ class PurrfectPitchGame:
         self.window_height = window_height
         self.metadata_path = metadata_path
 
-        # Game phase
-        self.phase = GamePhase.IDLE
+        # Game phase: start screen by default
+        self.phase = GamePhase.START_POPUP
         self.feedback_message = ""
         self.feedback_start_time = 0.0
         self.feedback_duration = 2.0
@@ -107,6 +110,16 @@ class PurrfectPitchGame:
         # State tracking
         self.current_audio_start_time: Optional[float] = None
         self.last_tilt_state = "CENTER"
+        # Countdown state
+        self.countdown_start_time: Optional[float] = None
+        self.countdown_duration: int = 3
+
+        # Popup image assets for menus (start / game over)
+        self.start_img = self._load_image(Path("asset/start.png"))
+        self.gameover_img = self._load_image(Path("asset/gameover.png"))
+        # Popup animation state (start image visible at launch)
+        self.popup_start_time: Optional[float] = time.time()
+        self.popup_anim_duration: float = 0.6
 
         print("[INIT] Game ready!")
 
@@ -118,6 +131,21 @@ class PurrfectPitchGame:
 
         with open(self.metadata_path, "r", encoding="utf-8") as f:
             return json.load(f)
+
+    def _load_image(self, path: Path) -> Optional[np.ndarray]:
+        """Load an image with alpha if available; return None if missing."""
+        try:
+            if path.exists():
+                img = cv2.imread(str(path), cv2.IMREAD_UNCHANGED)
+                if img is None:
+                    print(f"[WARN] Failed to load image: {path}")
+                return img
+            else:
+                # Not fatal: allow fallback to text
+                return None
+        except Exception as e:
+            print(f"[WARN] Error loading image {path}: {e}")
+            return None
 
     def _prepare_questions(self) -> List[Question]:
         """
@@ -152,12 +180,25 @@ class PurrfectPitchGame:
 
     def start_game(self) -> None:
         """Mulai game baru."""
-        print("\n[GAME] Starting new game...")
-        self.game_logic.start_game(shuffle=True)
-        self.phase = GamePhase.IDLE
+        print("\n[GAME] Preparing new game (showing start screen)...")
+        # Show start popup first; actual countdown begins when player presses SPACE
+        # (no reset call — GameLogic will be started when countdown begins)
+        self.phase = GamePhase.START_POPUP
+        self.popup_start_time = time.time()
+        self._scheduled_countdown_time = None
+        self.countdown_start_time = None
         self.feedback_message = ""
         self.answer_submitted = False
-        self._load_next_question()
+
+    def start_countdown_and_game(self) -> None:
+        """Begin the countdown then start the first question (called when player presses SPACE)."""
+        print("\n[GAME] Starting countdown and game...")
+        # Start game logic now and begin countdown immediately
+        self.game_logic.start_game(shuffle=True)
+        self.phase = GamePhase.COUNTDOWN
+        self.countdown_start_time = time.time()
+        self.popup_start_time = None
+        self._scheduled_countdown_time = None
 
     def _load_next_question(self) -> None:
         """Load soal berikutnya."""
@@ -168,11 +209,13 @@ class PurrfectPitchGame:
 
         if not state.is_running:
             self.phase = GamePhase.GAME_OVER
+            self.popup_start_time = time.time()
             return
 
         question = state.current_question
         if question is None:
             self.phase = GamePhase.GAME_OVER
+            self.popup_start_time = time.time()
             return
 
         print(f"\n[QUESTION] Loading {question.id}...")
@@ -317,6 +360,17 @@ class PurrfectPitchGame:
         """Update game state."""
         state = self.game_logic.get_state()
 
+        # START_POPUP: wait for player input (SPACE) to begin countdown
+
+        # Handle countdown -> when finished, load first question
+        if self.phase == GamePhase.COUNTDOWN:
+            if self.countdown_start_time is None:
+                self.countdown_start_time = time.time()
+            if time.time() - self.countdown_start_time >= self.countdown_duration:
+                # Start first question immediately
+                self._load_next_question()
+                return
+
         # Check game over (timer habis atau soal habis)
         if not state.is_running and self.phase != GamePhase.GAME_OVER:
             # Stop semua yang sedang berjalan
@@ -324,6 +378,8 @@ class PurrfectPitchGame:
             self.meme_overlay.hide_memes(animate=False)
 
             self.phase = GamePhase.GAME_OVER
+            # Trigger popup animation for game over
+            self.popup_start_time = time.time()
             print("\n[GAME] GAME OVER!")
             print(f"[SCORE] Final score: {state.score}/{state.total_questions}")
 
@@ -349,9 +405,7 @@ class PurrfectPitchGame:
                 # Cek apakah game masih running sebelum load next question
                 if state.is_running:
                     self._load_next_question()
-                else:
-                    # Game sudah selesai, langsung ke game over
-                    self.phase = GamePhase.GAME_OVER
+                # (removed stray START_POPUP handling here)
 
     def _render(self, camera_frame: np.ndarray) -> np.ndarray:
         """
@@ -380,10 +434,13 @@ class PurrfectPitchGame:
         center_x = self.window_width // 2
 
         title_y = 40
-        info_y = 110
-        waveform_y = 160
-        waveform_w = min(700, self.window_width - 100)
-        waveform_h = 140
+        # Move timer/score to top-right
+        info_y = 40
+        # Raise waveform slightly
+        waveform_y = 140
+        # Make waveform smaller
+        waveform_w = min(420, self.window_width - 200)
+        waveform_h = 100
         status_y = waveform_y + waveform_h + 50
         button_y = self.window_height - 90
 
@@ -393,23 +450,101 @@ class PurrfectPitchGame:
         title_x = center_x - title_size[0] // 2
         cv2.putText(canvas, title, (title_x, title_y), cv2.FONT_HERSHEY_DUPLEX, 1.2, (100, 200, 255), 3, cv2.LINE_AA)
 
+        # Draw start / gameover popup images (centered) with simple "popup" animation
+        def _draw_popup_image(img: np.ndarray, center_x: int, center_y: int, elapsed: float, duration: float):
+            if img is None:
+                return
+            t = min(1.0, max(0.0, elapsed / max(1e-6, duration)))
+            # ease-out cubic
+            ease = 1 - (1 - t) ** 3
+            base_scale = 0.7
+            scale = base_scale + 0.3 * ease
+
+            h0, w0 = img.shape[:2]
+            new_w = max(1, int(w0 * scale))
+            new_h = max(1, int(h0 * scale))
+            try:
+                img_resized = cv2.resize(img, (new_w, new_h), interpolation=cv2.INTER_AREA)
+            except Exception:
+                return
+
+            x = int(center_x - new_w // 2)
+            y = int(center_y - new_h // 2)
+
+            # Clip to canvas
+            x0 = max(0, x)
+            y0 = max(0, y)
+            x1 = min(self.window_width, x + new_w)
+            y1 = min(self.window_height, y + new_h)
+
+            roi_w = x1 - x0
+            roi_h = y1 - y0
+            if roi_w <= 0 or roi_h <= 0:
+                return
+
+            src_x0 = x0 - x
+            src_y0 = y0 - y
+            src_x1 = src_x0 + roi_w
+            src_y1 = src_y0 + roi_h
+
+            src = img_resized[src_y0:src_y1, src_x0:src_x1]
+
+            # If image has alpha channel, composite
+            if src.shape[2] == 4:
+                alpha = (src[..., 3:4] / 255.0).astype(np.float32)
+                src_bgr = src[..., :3].astype(np.float32)
+                dst = canvas[y0:y1, x0:x1].astype(np.float32)
+                out = alpha * src_bgr + (1 - alpha) * dst
+                canvas[y0:y1, x0:x1] = out.astype(np.uint8)
+            else:
+                canvas[y0:y1, x0:x1] = src
+
+        # START_POPUP: draw start image centered (shown when player presses SPACE)
+        if self.phase == GamePhase.START_POPUP:
+            if self.start_img is not None and self.popup_start_time is not None:
+                elapsed = time.time() - self.popup_start_time
+                _draw_popup_image(self.start_img, center_x, self.window_height // 2 - 20, elapsed, self.popup_anim_duration)
+
+        # GAME_OVER: draw game over image centered with popup and show score (raised)
+        if self.phase == GamePhase.GAME_OVER:
+            if self.gameover_img is not None:
+                elapsed = 0.0 if self.popup_start_time is None else (time.time() - self.popup_start_time)
+                # Draw popup slightly higher
+                _draw_popup_image(self.gameover_img, center_x, self.window_height // 2 - 60, elapsed, self.popup_anim_duration)
+                # Draw final score above the restart/exit buttons (raised to avoid overlap)
+                score_text = f"Final Score: {state.score}/{state.total_questions}"
+                st_size = cv2.getTextSize(score_text, cv2.FONT_HERSHEY_SIMPLEX, 0.9, 2)[0]
+                st_x = center_x - st_size[0] // 2
+                st_y = max(80, self.window_height // 2 + int((self.gameover_img.shape[0] * 0.5) if self.gameover_img is not None else 80) - 60)
+                cv2.putText(canvas, score_text, (st_x, st_y), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (255, 220, 120), 2, cv2.LINE_AA)
+            else:
+                # Fallback: show final score raised a bit
+                score_text = f"Final Score: {state.score}/{state.total_questions}"
+                sc_size = cv2.getTextSize(score_text, cv2.FONT_HERSHEY_SIMPLEX, 0.9, 2)[0]
+                sc_x = center_x - sc_size[0] // 2
+                sc_y = max(80, self.window_height // 2 - 20)
+                cv2.putText(canvas, score_text, (sc_x, sc_y), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (255, 220, 120), 2, cv2.LINE_AA)
+
         # If we're in the playing/waiting/feedback phases, draw timer, score, waveform and memes
         if self.phase in (GamePhase.PLAYING_AUDIO, GamePhase.WAITING_ANSWER, GamePhase.SHOW_FEEDBACK):
-            # Timer and score side-by-side, centered under the title
+            # Timer and score at top-right corner
             timer_text = f"Time: {int(state.remaining_time)}s"
             score_text = f"Score: {state.score}/{state.total_questions}"
             timer_color = (0, 255, 255) if state.remaining_time > 10 else (0, 100, 255)
 
             timer_size = cv2.getTextSize(timer_text, cv2.FONT_HERSHEY_SIMPLEX, 0.8, 2)[0]
             score_size = cv2.getTextSize(score_text, cv2.FONT_HERSHEY_SIMPLEX, 0.8, 2)[0]
-            spacing = 40
-            total_info_width = timer_size[0] + spacing + score_size[0]
-            timer_x = center_x - total_info_width // 2
+            spacing = 20
+            # Right aligned positions
+            right_margin = 20
+            score_x = self.window_width - right_margin - score_size[0]
+            timer_x = score_x - spacing - timer_size[0]
 
+            # Draw timer then score at top-right
             cv2.putText(canvas, timer_text, (timer_x, info_y), cv2.FONT_HERSHEY_SIMPLEX, 0.8, timer_color, 2, cv2.LINE_AA)
-            cv2.putText(canvas, score_text, (timer_x + timer_size[0] + spacing, info_y), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2, cv2.LINE_AA)
+            cv2.putText(canvas, score_text, (score_x, info_y), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2, cv2.LINE_AA)
 
-            # Waveform background (semi-transparent panel)
+            # Waveform background (semi-transparent panel) centered below title
             waveform_x = center_x - waveform_w // 2
             overlay = canvas.copy()
             panel_tl = (waveform_x - 10, waveform_y - 10)
@@ -427,15 +562,17 @@ class PurrfectPitchGame:
         # Status / feedback text (centered)
         status_lines = []
         if self.phase == GamePhase.IDLE:
-            status_lines = ["Press SPACE to start"]
+            status_lines = []
         elif self.phase == GamePhase.PLAYING_AUDIO:
-            status_lines = ["Listening to the cat sound..."]
+            # 'Listening' text is drawn above the waveform instead of here
+            status_lines = []
         elif self.phase == GamePhase.WAITING_ANSWER:
             status_lines = ["Tilt your head LEFT or RIGHT", "to choose the cat!"]
         elif self.phase == GamePhase.SHOW_FEEDBACK:
             status_lines = [self.feedback_message]
         elif self.phase == GamePhase.GAME_OVER:
-            status_lines = ["GAME OVER!", f"Final Score: {state.score}/{state.total_questions}"]
+            # Don't show literal 'GAME OVER' text; use popup image or score only
+            status_lines = []
 
         for i, line in enumerate(status_lines):
             if "BENAR" in line:
@@ -450,6 +587,35 @@ class PurrfectPitchGame:
             text_size = cv2.getTextSize(line, cv2.FONT_HERSHEY_SIMPLEX, size, thickness)[0]
             text_x = center_x - text_size[0] // 2
             cv2.putText(canvas, line, (text_x, status_y + i * 40), cv2.FONT_HERSHEY_SIMPLEX, size, color, thickness, cv2.LINE_AA)
+
+        # If playing audio, draw the listening text centered above the waveform
+        if self.phase == GamePhase.PLAYING_AUDIO:
+            listen_text = "Listening to the cat sound..."
+            lt_size = cv2.getTextSize(listen_text, cv2.FONT_HERSHEY_SIMPLEX, 0.8, 2)[0]
+            lt_x = center_x - lt_size[0] // 2
+            lt_y = waveform_y - 12  # slightly above the waveform panel
+            cv2.putText(canvas, listen_text, (lt_x, lt_y), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (200, 200, 200), 2, cv2.LINE_AA)
+
+        # If in countdown, draw big centered number (3..1)
+        if self.phase == GamePhase.COUNTDOWN and self.countdown_start_time is not None:
+            elapsed = time.time() - self.countdown_start_time
+            remaining = max(0.0, self.countdown_duration - elapsed)
+            count = int(math.ceil(remaining))
+            # Clamp count between 1..countdown_duration
+            count = max(1, min(self.countdown_duration, count))
+            cnt_text = str(count)
+            # Big size for countdown
+            font_scale = 5.0
+            thickness = 8
+            cnt_size = cv2.getTextSize(cnt_text, cv2.FONT_HERSHEY_DUPLEX, font_scale, thickness)[0]
+            cnt_x = center_x - cnt_size[0] // 2
+            cnt_y = (self.window_height // 2) + cnt_size[1] // 2
+            # Semi-transparent dark overlay to emphasize countdown
+            overlay = canvas.copy()
+            cv2.rectangle(overlay, (0, 0), (self.window_width, self.window_height), (0, 0, 0), -1)
+            alpha = 0.45
+            canvas[:] = cv2.addWeighted(canvas, 1 - alpha, overlay, alpha, 0)
+            cv2.putText(canvas, cnt_text, (cnt_x, cnt_y), cv2.FONT_HERSHEY_DUPLEX, font_scale, (255, 255, 255), thickness, cv2.LINE_AA)
 
         # Buttons when IDLE or GAME_OVER (centered near bottom)
         if self.phase in (GamePhase.GAME_OVER, GamePhase.IDLE):
@@ -491,25 +657,29 @@ class PurrfectPitchGame:
 
         try:
             while True:
-                # Read camera frame
-                ret, frame = self.face_tracker._cap.read()
-                if not ret:
-                    print("[ERROR] Cannot read camera frame")
-                    break
+                # If showing the START screen, do not read the camera — render a black canvas with the start image
+                if self.phase == GamePhase.START_POPUP:
+                    frame = np.zeros((self.window_height, self.window_width, 3), dtype=np.uint8)
+                else:
+                    # Read camera frame
+                    ret, frame = self.face_tracker._cap.read()
+                    if not ret:
+                        print("[ERROR] Cannot read camera frame")
+                        break
 
-                # Flip frame (mirror)
-                frame = cv2.flip(frame, 1)
+                    # Flip frame (mirror)
+                    frame = cv2.flip(frame, 1)
 
-                # Evaluate face tracking
-                face_state = self.face_tracker._evaluate_state(frame)
+                    # Evaluate face tracking
+                    face_state = self.face_tracker._evaluate_state(frame)
 
-                # Face tracking callback
-                self._on_face_tracking_update(face_state, frame)
+                    # Face tracking callback
+                    self._on_face_tracking_update(face_state, frame)
 
                 # Update game logic
                 self._update()
 
-                # Render game UI
+                # Render game UI (frame may be black canvas for START_POPUP)
                 game_frame = self._render(frame)
 
                 # Show window
@@ -522,8 +692,9 @@ class PurrfectPitchGame:
                     print("\n[EXIT] User quit")
                     break
                 elif key == ord(' '):  # SPACE
-                    if self.phase in (GamePhase.IDLE, GamePhase.GAME_OVER):
-                        self.start_game()
+                    # If on the start screen or after game over, pressing SPACE starts the countdown and game
+                    if self.phase in (GamePhase.START_POPUP, GamePhase.IDLE, GamePhase.GAME_OVER):
+                        self.start_countdown_and_game()
                 elif key == 81 or key == 2:  # LEFT ARROW
                     if self.phase == GamePhase.WAITING_ANSWER:
                         self._submit_answer("LEFT")
