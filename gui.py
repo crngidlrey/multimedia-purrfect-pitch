@@ -716,10 +716,14 @@ class PurrfectPitchGame:
         waveform_y = 140
         # Make waveform smaller
         waveform_w = min(420, self.window_width - 200)
-        waveform_h = 100
+        waveform_h = 50
         status_y = waveform_y + waveform_h + 50
         button_y = self.window_height - 90
 
+        title = "PURRFECT PITCH"
+        title_size = cv2.getTextSize(title, cv2.FONT_HERSHEY_DUPLEX, 1.2, 3)[0]
+        title_x = center_x - title_size[0] // 2
+        cv2.putText(canvas, title, (title_x, title_y), cv2.FONT_HERSHEY_DUPLEX, 1.2, (100, 200, 255), 3, cv2.LINE_AA)
         # Title
         title = "PURRFECT PITCH"
         title_size = cv2.getTextSize(title, cv2.FONT_HERSHEY_DUPLEX, 1.2, 3)[0]
@@ -727,14 +731,14 @@ class PurrfectPitchGame:
         cv2.putText(canvas, title, (title_x, title_y), cv2.FONT_HERSHEY_DUPLEX, 1.2, (100, 200, 255), 3, cv2.LINE_AA)
 
         # Draw start / gameover popup images (centered) with simple "popup" animation
-        def _draw_popup_image(img: np.ndarray, center_x: int, center_y: int, elapsed: float, duration: float):
+        def _draw_popup_image(img: np.ndarray, center_x: int, center_y: int, elapsed: float, duration: float, extra_scale: float = 1.0):
             if img is None:
                 return 0
             t = min(1.0, max(0.0, elapsed / max(1e-6, duration)))
             # ease-out cubic
             ease = 1 - (1 - t) ** 3
             base_scale = 0.7
-            scale = base_scale + 0.3 * ease
+            scale = (base_scale + 0.3 * ease) * extra_scale
 
             h0, w0 = img.shape[:2]
             new_w = max(1, int(w0 * scale))
@@ -780,7 +784,8 @@ class PurrfectPitchGame:
         if self.phase == GamePhase.START_POPUP:
             if self.start_img is not None and self.popup_start_time is not None:
                 elapsed = time.time() - self.popup_start_time
-                _draw_popup_image(self.start_img, center_x, self.window_height // 2 - 60, elapsed, self.popup_anim_duration)
+                bounce = 1.0 + 0.05 * math.sin(time.time() * 4.0)
+                _draw_popup_image(self.start_img, center_x, self.window_height // 2, elapsed, self.popup_anim_duration, extra_scale=bounce)
 
         # GAME_OVER: draw game over image closer to title with aligned score
         elif self.phase == GamePhase.GAME_OVER:

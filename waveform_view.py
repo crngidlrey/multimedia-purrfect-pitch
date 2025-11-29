@@ -153,12 +153,9 @@ class WaveformView:
         if num_samples == 0:
             return
 
-        # === STEP 1: Hitung area yang aman untuk menggambar ===
-        # Margin internal yang cukup besar untuk safety
-        margin_horizontal = 12  # Safety margin kiri-kanan
-        margin_vertical = 12    # Safety margin atas-bawah
-
-        # Area yang bisa digunakan untuk waveform
+        # === STEP 1: Hitung area untuk menggambar (center-aligned) ===
+        margin_horizontal = 12
+        margin_vertical = 12
         usable_width = width - 2 * margin_horizontal
         usable_height = height - 2 * margin_vertical
 
@@ -188,7 +185,9 @@ class WaveformView:
         # === STEP 5: Draw bars dengan clipping ketat ===
         for i, amplitude in enumerate(self._waveform_data):
             # Posisi X bar
-            bar_x = box_left + i * (bar_width + bar_spacing)
+            total_bar_width = num_samples * bar_width + (num_samples - 1) * bar_spacing
+            start_x = x + (width - total_bar_width) // 2
+            bar_x = start_x + i * (bar_width + bar_spacing)
 
             # CLAMP X agar tidak keluar box
             bar_x = max(box_left, min(bar_x, box_right - bar_width))
