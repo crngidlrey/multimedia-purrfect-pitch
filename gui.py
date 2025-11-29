@@ -96,6 +96,7 @@ class PurrfectPitchGame:
         self._bgm_started = False
         self._bgm_delay = 1.5  # seconds
         self._bgm_timer = time.time()
+        self._win_sound_played = False
 
         print("[INIT] Prepare questions...")
         self.questions = self._prepare_questions()
@@ -226,6 +227,7 @@ class PurrfectPitchGame:
         self._pending_audio_start = False
         self._was_audio_playing = False
         self._audio_elapsed_before_pause = 0.0
+        self._win_sound_played = False
 
     def start_countdown_and_game(self) -> None:
         """Begin the countdown then start the first question (called when player presses SPACE)."""
@@ -244,6 +246,7 @@ class PurrfectPitchGame:
         self._paused_countdown_remaining = None
         self._was_audio_playing = False
         self._audio_elapsed_before_pause = 0.0
+        self._win_sound_played = False
         if not self.face_present:
             self._pause_due_to_face_loss()
 
@@ -568,6 +571,7 @@ class PurrfectPitchGame:
                     # Transition to game over popup
                     self.phase = GamePhase.GAME_OVER
                     self.popup_start_time = time.time()
+                    self._play_win_sound()
                     print("\n[GAME] GAME OVER! (scheduled)")
                     print(f"[SCORE] Final score: {state.score}/{state.total_questions}")
                 else:
@@ -599,6 +603,7 @@ class PurrfectPitchGame:
             self.phase = GamePhase.GAME_OVER
             # Trigger popup animation for game over
             self.popup_start_time = time.time()
+            self._play_win_sound()
             print("\n[GAME] GAME OVER!")
             print(f"[SCORE] Final score: {state.score}/{state.total_questions}")
 
@@ -625,6 +630,14 @@ class PurrfectPitchGame:
                 if state.is_running:
                     self._load_next_question()
                 # (removed stray START_POPUP handling here)
+
+    def _play_win_sound(self) -> None:
+        """Play victory sound exactly once until the player restarts."""
+        if self._win_sound_played:
+            return
+        win_sound = Path("asset/win_sound.wav")
+        self.audio_manager.play_effect(win_sound, volume=0.8)
+        self._win_sound_played = True
 
     def _render(self, camera_frame: np.ndarray) -> np.ndarray:
         """

@@ -358,6 +358,24 @@ class AudioManager:
         pygame.mixer.quit()
 
     # ------------------------------------------------------------------
+    # Special effect (victory sound) helpers
+    # ------------------------------------------------------------------
+
+    def play_effect(self, effect_path: Path, volume: float = 0.8) -> None:
+        """
+        Play a one-shot sound effect (e.g., win sound) without stopping other audio.
+        """
+        if not effect_path.exists():
+            print(f"[WARN] Effect not found: {effect_path}")
+            return
+        try:
+            effect = pygame.mixer.Sound(str(effect_path))
+            effect.set_volume(max(0.0, min(1.0, volume)))
+            effect.play()
+        except Exception as exc:
+            print(f"[ERROR] Failed to play effect {effect_path}: {exc}")
+
+    # ------------------------------------------------------------------
     # Background music helpers
     # ------------------------------------------------------------------
 
