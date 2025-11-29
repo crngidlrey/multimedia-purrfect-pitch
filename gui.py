@@ -131,9 +131,11 @@ class PurrfectPitchGame:
         self.countdown_end_time: Optional[float] = None
         self.countdown_duration: int = 3
 
-        # Popup image assets for menus (start / game over)
+        # Popup image assets for menus (start / game over / score board / instruction board)
         self.start_img = self._load_image(Path("asset/start.png"))
         self.gameover_img = self._load_image(Path("asset/gameover.png"))
+        self.scoreboard_img = self._load_image(Path("asset/score_board.png"))
+        self.instruction_board_img = self._load_image(Path("asset/instruction_board.png"))
         # Popup animation state (start image visible at launch)
         self.popup_start_time: Optional[float] = time.time()
         self.popup_anim_duration: float = 0.6
@@ -789,25 +791,75 @@ class PurrfectPitchGame:
 
         # GAME_OVER: draw game over image closer to title with aligned score
         elif self.phase == GamePhase.GAME_OVER:
+            elapsed = 0.0 if self.popup_start_time is None else (time.time() - self.popup_start_time)
             if self.gameover_img is not None:
-                elapsed = 0.0 if self.popup_start_time is None else (time.time() - self.popup_start_time)
                 # Position image a bit below the main title
                 img_center_y = title_y + title_size[1] + 50
-                popup_height = _draw_popup_image(self.gameover_img, center_x, img_center_y, elapsed, self.popup_anim_duration)
+                _draw_popup_image(self.gameover_img, center_x, img_center_y, elapsed, self.popup_anim_duration)
 
-                # Draw final score above the restart/exit buttons (raised to avoid overlap)
-                score_text = f"Final Score: {state.score}/{state.total_questions}"
-                st_size = cv2.getTextSize(score_text, cv2.FONT_HERSHEY_SIMPLEX, 0.9, 2)[0]
-                st_x = center_x - st_size[0] // 2
-                st_y = max(80, self.window_height // 2 + int((self.gameover_img.shape[0] * 0.5) if self.gameover_img is not None else 80) - 60)
-                cv2.putText(canvas, score_text, (st_x, st_y), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (255, 220, 120), 2, cv2.LINE_AA)
-            else:
-                # Fallback: show final score raised a bit
-                score_text = f"Final Score: {state.score}/{state.total_questions}"
-                sc_size = cv2.getTextSize(score_text, cv2.FONT_HERSHEY_SIMPLEX, 0.9, 2)[0]
-                sc_x = center_x - sc_size[0] // 2
-                sc_y = max(80, self.window_height // 2 - 20)
-                cv2.putText(canvas, score_text, (sc_x, sc_y), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (255, 220, 120), 2, cv2.LINE_AA)
+            label_text = "Final Score:"
+            label_size = cv2.getTextSize(label_text, cv2.FONT_HERSHEY_SIMPLEX, 0.9, 2)[0]
+            value_text = f"{state.score}/{state.total_questions}"
+            value_size = cv2.getTextSize(value_text, cv2.FONT_HERSHEY_SIMPLEX, 1.1, 3)[0]
+            label_x = center_x - label_size[0] // 2
+            label_y = max(80, self.window_height // 2 - 40)
+            value_x = center_x - value_size[0] // 2
+            value_y = label_y + value_size[1] + 28
+
+            # Draw score board image (scaled down) and align score text with it
+            if self.scoreboard_img is not None:
+                sb_scale_target = 0.27
+                sb_w0 = max(1, self.scoreboard_img.shape[1])
+                available_scale = (self.window_width - 100) / sb_w0
+                sb_scale = min(sb_scale_target, available_scale)
+                try:
+                    sb_resized = cv2.resize(
+                        self.scoreboard_img,
+                        (max(1, int(sb_w0 * sb_scale)), max(1, int(self.scoreboard_img.shape[0] * sb_scale))),
+                        interpolation=cv2.INTER_AREA
+                    )
+                except Exception:
+                    sb_resized = None
+
+                if sb_resized is not None:
+                    sb_h, sb_w = sb_resized.shape[:2]
+                    min_x = 20
+                    max_x = self.window_width - sb_w - 20
+                    sb_x = min(max_x, max(min_x, self.window_width - sb_w - 30))
+
+                    sb_y = max(title_y + title_size[1] + 20, self.window_height - sb_h - -15)
+                    sb_center_y = sb_y + sb_h // 2
+
+                    x0 = max(0, sb_x)
+                    y0 = max(0, sb_y)
+                    x1 = min(self.window_width, sb_x + sb_w)
+                    y1 = min(self.window_height, sb_y + sb_h)
+
+                    roi_w = x1 - x0
+                    roi_h = y1 - y0
+                    if roi_w > 0 and roi_h > 0:
+                        src_x0 = x0 - sb_x
+                        src_y0 = y0 - sb_y
+                        src_x1 = src_x0 + roi_w
+                        src_y1 = src_y0 + roi_h
+                        src = sb_resized[src_y0:src_y1, src_x0:src_x1]
+                        if src.shape[2] == 4:
+                            alpha = (src[..., 3:4] / 255.0).astype(np.float32)
+                            src_bgr = src[..., :3].astype(np.float32)
+                            dst = canvas[y0:y1, x0:x1].astype(np.float32)
+                            out = alpha * src_bgr + (1 - alpha) * dst
+                            canvas[y0:y1, x0:x1] = out.astype(np.uint8)
+                        else:
+                            canvas[y0:y1, x0:x1] = src
+
+                        label_x = sb_x + (sb_w - label_size[0] + 115) // 2
+                        text_top = sb_y + max(20, int(sb_h * 0.3))
+                        label_y = text_top + label_size[1]
+                        value_x = sb_x + (sb_w - value_size[0] + 115) // 2
+                        value_y = min(sb_y + sb_h - 12, label_y + value_size[1] + 18)
+
+            cv2.putText(canvas, label_text, (label_x, label_y), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 0, 0), 2, cv2.LINE_AA)
+            cv2.putText(canvas, value_text, (value_x, value_y), cv2.FONT_HERSHEY_SIMPLEX, 1.1, (0, 0, 0), 3, cv2.LINE_AA)
 
         # If we're in the playing/waiting/feedback phases, draw timer, score, waveform and memes
         if face_available and self.phase in (GamePhase.PLAYING_AUDIO, GamePhase.WAITING_ANSWER, GamePhase.SHOW_FEEDBACK):
@@ -905,6 +957,7 @@ class PurrfectPitchGame:
 
         # Buttons when IDLE or GAME_OVER (centered near bottom)
         if self.phase in (GamePhase.GAME_OVER, GamePhase.IDLE):
+            # Buttons remain accessible via keyboard shortcuts; no on-screen labels needed.
             button_spacing = 30
             restart_text = "[  Restart  ]"
             exit_text = "[  Exit  ]"
@@ -913,15 +966,48 @@ class PurrfectPitchGame:
             total_button_width = restart_size[0] + button_spacing + exit_size[0]
             restart_x = center_x - total_button_width // 2
             exit_x = restart_x + restart_size[0] + button_spacing
-            cv2.putText(canvas, restart_text, (restart_x, button_y), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (100, 200, 255), 1, cv2.LINE_AA)
-            cv2.putText(canvas, exit_text, (exit_x, button_y), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 100, 100), 1, cv2.LINE_AA)
 
-        # Controls info at very bottom
-        controls = "SPACE: Start/Restart   |   ESC: Exit   |   Arrow Keys: Manual Select"
-        ctrl_size = cv2.getTextSize(controls, cv2.FONT_HERSHEY_SIMPLEX, 0.45, 1)[0]
-        ctrl_x = center_x - ctrl_size[0] // 2
-        ctrl_y = self.window_height - 20
-        cv2.putText(canvas, controls, (ctrl_x, ctrl_y), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (180, 180, 180), 1, cv2.LINE_AA)
+        # Instruction board (visual cue only; controls remain active without text)
+        if self.instruction_board_img is not None:
+            board_w0 = max(1, self.instruction_board_img.shape[1])
+            max_scale = (self.window_width - 200) / board_w0
+            board_scale = min(0.17, max_scale)
+            try:
+                board_resized = cv2.resize(
+                    self.instruction_board_img,
+                    (max(1, int(self.instruction_board_img.shape[1] * board_scale)),
+                     max(1, int(self.instruction_board_img.shape[0] * board_scale))),
+                    interpolation=cv2.INTER_AREA
+                )
+            except Exception:
+                board_resized = None
+
+            if board_resized is not None:
+                board_h, board_w = board_resized.shape[:2]
+                board_x = -55
+                board_y = self.window_height - board_h - 0
+
+                x0 = max(0, board_x)
+                y0 = max(0, board_y)
+                x1 = min(self.window_width, board_x + board_w)
+                y1 = min(self.window_height, board_y + board_h)
+
+                roi_w = x1 - x0
+                roi_h = y1 - y0
+                if roi_w > 0 and roi_h > 0:
+                    src_x0 = x0 - board_x
+                    src_y0 = y0 - board_y
+                    src_x1 = src_x0 + roi_w
+                    src_y1 = src_y0 + roi_h
+                    src = board_resized[src_y0:src_y1, src_x0:src_x1]
+                    if src.shape[2] == 4:
+                        alpha = (src[..., 3:4] / 255.0).astype(np.float32)
+                        src_bgr = src[..., :3].astype(np.float32)
+                        dst = canvas[y0:y1, x0:x1].astype(np.float32)
+                        out = alpha * src_bgr + (1 - alpha) * dst
+                        canvas[y0:y1, x0:x1] = out.astype(np.uint8)
+                    else:
+                        canvas[y0:y1, x0:x1] = src
 
         if not face_available:
             warn = "NO FACE DETECTED - PLEASE LOOK AT THE CAMERA"
