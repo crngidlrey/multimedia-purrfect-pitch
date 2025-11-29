@@ -785,13 +785,7 @@ class PurrfectPitchGame:
         # Status / feedback text (centered)
         status_lines = []
         if face_available:
-            if self.phase == GamePhase.IDLE:
-                status_lines = []
-            elif self.phase == GamePhase.PLAYING_AUDIO:
-                status_lines = []
-            elif self.phase == GamePhase.WAITING_ANSWER:
-                status_lines = ["Tilt your head LEFT or RIGHT", "to choose the cat!"]
-            elif self.phase == GamePhase.SHOW_FEEDBACK:
+            if self.phase == GamePhase.SHOW_FEEDBACK:
                 status_lines = [self.feedback_message]
             elif self.phase == GamePhase.GAME_OVER:
                 status_lines = []
@@ -811,12 +805,21 @@ class PurrfectPitchGame:
             cv2.putText(canvas, line, (text_x, status_y + i * 40), cv2.FONT_HERSHEY_SIMPLEX, size, color, thickness, cv2.LINE_AA)
 
         # If playing audio, draw the listening text centered above the waveform
-        if face_available and self.phase == GamePhase.PLAYING_AUDIO:
-            listen_text = "Listening to the cat sound..."
-            lt_size = cv2.getTextSize(listen_text, cv2.FONT_HERSHEY_SIMPLEX, 0.8, 2)[0]
-            lt_x = center_x - lt_size[0] // 2
-            lt_y = waveform_y - 12  # slightly above the waveform panel
-            cv2.putText(canvas, listen_text, (lt_x, lt_y), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (200, 200, 200), 2, cv2.LINE_AA)
+        if face_available:
+            if self.phase == GamePhase.PLAYING_AUDIO:
+                msg = "Listening to the cat sound..."
+                color = (200, 200, 200)
+            elif self.phase == GamePhase.WAITING_ANSWER:
+                msg = "Tilt your head LEFT or RIGHT to choose the cat!"
+                color = (255, 220, 150)
+            else:
+                msg = None
+
+            if msg:
+                lt_size = cv2.getTextSize(msg, cv2.FONT_HERSHEY_SIMPLEX, 0.8, 2)[0]
+                lt_x = center_x - lt_size[0] // 2
+                lt_y = waveform_y - 12  # slightly above the waveform panel
+                cv2.putText(canvas, msg, (lt_x, lt_y), cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2, cv2.LINE_AA)
 
         # If in countdown, draw big centered number (3..1)
         if face_available and self.phase == GamePhase.COUNTDOWN and self.countdown_start_time is not None:
