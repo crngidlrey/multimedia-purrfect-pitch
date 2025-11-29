@@ -92,6 +92,10 @@ class PurrfectPitchGame:
 
         print("[INIT] Inisialisasi Audio Manager...")
         self.audio_manager = AudioManager(output_folder=Path("asset_output"))
+        self._bgm_path = Path("asset/backsound.m4a")
+        self._bgm_started = False
+        self._bgm_delay = 1.5  # seconds
+        self._bgm_timer = time.time()
 
         print("[INIT] Prepare questions...")
         self.questions = self._prepare_questions()
@@ -911,6 +915,11 @@ class PurrfectPitchGame:
                 # Evaluate face tracking for every phase
                 face_state = self.face_tracker._evaluate_state(frame)
                 self._on_face_tracking_update(face_state, frame)
+
+                # Start background music after slight delay
+                if not self._bgm_started and (time.time() - self._bgm_timer) >= self._bgm_delay:
+                    self.audio_manager.start_background_music(self._bgm_path, volume=0.06)
+                    self._bgm_started = True
 
                 # Update game logic
                 self._update()

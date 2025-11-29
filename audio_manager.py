@@ -15,6 +15,8 @@ from pathlib import Path
 from typing import Callable, Optional, List, Dict
 import pygame
 from dataclasses import dataclass
+import librosa
+import soundfile as sf
 
 # Import fungsi dari audio_processing untuk transformasi
 import audio_processing
@@ -64,6 +66,9 @@ class AudioManager:
         self._on_finish_callback: Optional[Callable[[], None]] = None
         self._is_playing = False
         self._is_paused = False
+        # Background music tracking
+        self._bgm_playing: bool = False
+        self._bgm_path: Optional[Path] = None
 
     def prepare_audio_clips(
         self, 
@@ -349,7 +354,59 @@ class AudioManager:
         """
         self.stop()
         self.clear_queue()
+        self.stop_background_music()
         pygame.mixer.quit()
+
+    # ------------------------------------------------------------------
+    # Background music helpers
+    # ------------------------------------------------------------------
+
+    def _prepare_bgm_file(self, music_path: Path) -> Optional[Path]:
+        """
+        Convert background music to WAV if format unsupported by pygame.
+        Returns path to playable file.
+        """
+        if music_path.suffix.lower() == ".wav":
+            return music_path
+
+        converted = self._output_folder / f"{music_path.stem}_bgm.wav"
+        try:
+            data, sr = librosa.load(str(music_path), sr=None, mono=False)
+            if data.ndim > 1:
+                data_to_write = data.T
+            else:
+                data_to_write = data
+            sf.write(str(converted), data_to_write, sr)
+            return converted
+        except Exception as exc:
+            print(f"[ERROR] Failed to convert background music {music_path}: {exc}")
+            return None
+
+    def start_background_music(self, music_path: Path, volume: float = 0.25) -> None:
+        """
+        Play background music in loop. Dipanggil sekali saat game mulai.
+        """
+        if not music_path.exists():
+            print(f"[WARN] Background music not found: {music_path}")
+            return
+        load_path = self._prepare_bgm_file(music_path)
+        if load_path is None:
+            return
+        try:
+            pygame.mixer.music.load(str(load_path))
+            pygame.mixer.music.set_volume(max(0.0, min(1.0, volume)))
+            pygame.mixer.music.play(loops=-1)
+            self._bgm_playing = True
+            self._bgm_path = load_path
+            print(f"[AudioManager] Background music started: {load_path}")
+        except Exception as exc:
+            print(f"[ERROR] Failed to start background music: {exc}")
+
+    def stop_background_music(self) -> None:
+        """Stop background music playback."""
+        if self._bgm_playing:
+            pygame.mixer.music.stop()
+            self._bgm_playing = False
 
 
 if __name__ == "__main__":
