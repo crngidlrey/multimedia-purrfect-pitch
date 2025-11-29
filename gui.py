@@ -97,6 +97,10 @@ class PurrfectPitchGame:
         self._bgm_delay = 1.5  # seconds
         self._bgm_timer = time.time()
         self._win_sound_played = False
+        # Confetti animation
+        self._confetti_path = Path("asset/confetti.mp4")
+        self._confetti_cap: Optional[cv2.VideoCapture] = None
+        self._confetti_active = False
 
         print("[INIT] Prepare questions...")
         self.questions = self._prepare_questions()
@@ -228,6 +232,7 @@ class PurrfectPitchGame:
         self._was_audio_playing = False
         self._audio_elapsed_before_pause = 0.0
         self._win_sound_played = False
+        self._stop_confetti()
 
     def start_countdown_and_game(self) -> None:
         """Begin the countdown then start the first question (called when player presses SPACE)."""
@@ -247,6 +252,7 @@ class PurrfectPitchGame:
         self._was_audio_playing = False
         self._audio_elapsed_before_pause = 0.0
         self._win_sound_played = False
+        self._stop_confetti()
         if not self.face_present:
             self._pause_due_to_face_loss()
 
@@ -573,6 +579,7 @@ class PurrfectPitchGame:
                     self.phase = GamePhase.GAME_OVER
                     self.popup_start_time = time.time()
                     self._play_win_sound()
+                    self._start_confetti()
                     print("\n[GAME] GAME OVER! (scheduled)")
                     print(f"[SCORE] Final score: {state.score}/{state.total_questions}")
                 else:
@@ -605,6 +612,7 @@ class PurrfectPitchGame:
             # Trigger popup animation for game over
             self.popup_start_time = time.time()
             self._play_win_sound()
+            self._start_confetti()
             print("\n[GAME] GAME OVER!")
             print(f"[SCORE] Final score: {state.score}/{state.total_questions}")
 
@@ -645,6 +653,27 @@ class PurrfectPitchGame:
         sound_name = "correct.wav" if is_correct else "wrong.wav"
         effect_path = Path("asset") / sound_name
         self.audio_manager.play_effect(effect_path, volume=0.6)
+
+    def _start_confetti(self) -> None:
+        """Mulai animasi confetti menggunakan video."""
+        if self._confetti_active:
+            return
+        if not self._confetti_path.exists():
+            print(f"[WARN] Confetti video not found: {self._confetti_path}")
+            return
+        cap = cv2.VideoCapture(str(self._confetti_path))
+        if not cap.isOpened():
+            print(f"[WARN] Failed to open confetti video: {self._confetti_path}")
+            return
+        self._confetti_cap = cap
+        self._confetti_active = True
+
+    def _stop_confetti(self) -> None:
+        """Hentikan animasi confetti dan reset video."""
+        self._confetti_active = False
+        if self._confetti_cap is not None:
+            self._confetti_cap.release()
+            self._confetti_cap = None
 
     def _render(self, camera_frame: np.ndarray) -> np.ndarray:
         """
@@ -901,6 +930,28 @@ class PurrfectPitchGame:
                 (0, 0, 255), 2, cv2.LINE_AA
             )
 
+        # Overlay confetti animation when active (typically during Game Over)
+        if self._confetti_active and self._confetti_cap is not None:
+            ret, conf_frame = self._confetti_cap.read()
+            if not ret:
+                self._confetti_cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                ret, conf_frame = self._confetti_cap.read()
+            if ret:
+                conf_frame = cv2.resize(conf_frame, (self.window_width, self.window_height))
+                if conf_frame.shape[2] == 4:
+                    alpha = (conf_frame[..., 3:] / 255.0).astype(np.float32)
+                    conf_rgb = conf_frame[..., :3].astype(np.float32)
+                    dst = canvas.astype(np.float32)
+                    canvas = (alpha * conf_rgb + (1 - alpha) * dst).astype(np.uint8)
+                else:
+                    # Treat dark (near-black) pixels as transparent so confetti doesn't darken canvas
+                    gray = cv2.cvtColor(conf_frame, cv2.COLOR_BGR2GRAY)
+                    mask = (gray > 25).astype(np.float32)[..., None]
+                    conf_rgb = conf_frame.astype(np.float32)
+                    dst = canvas.astype(np.float32)
+                    blended = mask * conf_rgb + (1 - mask) * dst
+                    canvas = blended.astype(np.uint8)
+
         return canvas
 
     def run(self) -> None:
@@ -991,6 +1042,7 @@ class PurrfectPitchGame:
             print("\n[CLEANUP] Closing game...")
             self.face_tracker.stop()
             self.audio_manager.cleanup()
+            self._stop_confetti()
             cv2.destroyAllWindows()
             print("[EXIT] Goodbye!")
 
