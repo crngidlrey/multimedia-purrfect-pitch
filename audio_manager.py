@@ -63,6 +63,7 @@ class AudioManager:
         # Callback untuk notifikasi
         self._on_finish_callback: Optional[Callable[[], None]] = None
         self._is_playing = False
+        self._is_paused = False
 
     def prepare_audio_clips(
         self, 
@@ -172,14 +173,14 @@ class AudioManager:
         try:
             # Stop audio sebelumnya
             self.stop()
-            
+
             # Load audio sebagai Sound object
             self._current_sound = pygame.mixer.Sound(str(clip.processed_path))
             self._current_clip = clip
-            
+
             print(f"[AudioManager] Loaded: {clip.id}")
             return True
-            
+
         except Exception as e:
             print(f"[ERROR] Gagal load clip {clip.id}: {e}")
             self._current_sound = None
@@ -249,14 +250,15 @@ class AudioManager:
         try:
             # Set callback untuk notifikasi selesai
             self._on_finish_callback = on_finish
-            
+
             # Mainkan audio (loops=0 artinya play sekali saja)
             self._current_sound.play(loops=0)
             self._is_playing = True
-            
+            self._is_paused = False
+
             print(f"[AudioManager] Playing: {self._current_clip.id}")
             return True
-            
+
         except Exception as e:
             print(f"[ERROR] Gagal memainkan audio: {e}")
             return False
@@ -269,6 +271,7 @@ class AudioManager:
         if self._is_playing:
             pygame.mixer.stop()  # Stop semua channel
             self._is_playing = False
+            self._is_paused = False
             self._on_finish_callback = None
 
     def is_playing(self) -> bool:
@@ -280,6 +283,24 @@ class AudioManager:
         """
         # pygame.mixer.get_busy() return True jika ada channel yang aktif
         return pygame.mixer.get_busy()
+
+    def pause(self) -> None:
+        """
+        Pause playback (digunakan saat wajah tidak terdeteksi).
+        """
+        if self._is_playing and not self._is_paused:
+            pygame.mixer.pause()
+            self._is_playing = False
+            self._is_paused = True
+
+    def resume(self) -> None:
+        """
+        Lanjutkan playback setelah pause.
+        """
+        if self._is_paused:
+            pygame.mixer.unpause()
+            self._is_paused = False
+            self._is_playing = True
 
     def set_volume(self, volume: float) -> None:
         """
@@ -299,9 +320,12 @@ class AudioManager:
         Method ini harus dipanggil secara periodik dari main loop.
         """
         # Jika sebelumnya playing tapi sekarang sudah tidak busy
+        if self._is_paused:
+            return
+
         if self._is_playing and not self.is_playing():
             self._is_playing = False
-            
+
             # Panggil callback jika sudah di-set
             if self._on_finish_callback:
                 callback = self._on_finish_callback

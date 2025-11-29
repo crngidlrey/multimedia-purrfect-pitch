@@ -40,6 +40,7 @@ class GamePhase(Enum):
     START_POPUP = "start_popup"
     COUNTDOWN = "countdown"
     GAME_OVER = "game_over"
+    PAUSED_NO_FACE = "paused_no_face"
 
 
 class PurrfectPitchGame:
@@ -118,6 +119,7 @@ class PurrfectPitchGame:
         self._scheduled_end_game: bool = False
         # Countdown state
         self.countdown_start_time: Optional[float] = None
+        self.countdown_end_time: Optional[float] = None
         self.countdown_duration: int = 3
 
         # Popup image assets for menus (start / game over)
@@ -128,6 +130,15 @@ class PurrfectPitchGame:
         self.popup_anim_duration: float = 0.6
         # Camera transform cache (scale and crop offsets for fit-to-window)
         self._camera_transform: Optional[tuple[float, int, int]] = None
+        # Face detection status & pause helpers
+        self.face_present: bool = False
+        self._phase_before_pause: Optional[GamePhase] = None
+        self._paused_countdown_remaining: Optional[float] = None
+        self._scheduled_transition_remaining: Optional[float] = None
+        self._scheduled_transition_was_end: bool = False
+        self._was_audio_playing: bool = False
+        self._pending_audio_start: bool = False
+        self._audio_elapsed_before_pause: float = 0.0
 
         # Verify start image loaded
         if self.start_img is not None:
@@ -201,8 +212,16 @@ class PurrfectPitchGame:
         self.popup_start_time = time.time()
         self._scheduled_countdown_time = None
         self.countdown_start_time = None
+        self.countdown_end_time = None
         self.feedback_message = ""
         self.answer_submitted = False
+        self._phase_before_pause = None
+        self._paused_countdown_remaining = None
+        self._scheduled_transition_remaining = None
+        self._scheduled_transition_was_end = False
+        self._pending_audio_start = False
+        self._was_audio_playing = False
+        self._audio_elapsed_before_pause = 0.0
 
     def start_countdown_and_game(self) -> None:
         """Begin the countdown then start the first question (called when player presses SPACE)."""
@@ -211,13 +230,24 @@ class PurrfectPitchGame:
         self.game_logic.start_game(shuffle=True)
         self.phase = GamePhase.COUNTDOWN
         self.countdown_start_time = time.time()
+        self.countdown_end_time = self.countdown_start_time + self.countdown_duration
         self.popup_start_time = None
         self._scheduled_countdown_time = None
+        self._pending_audio_start = False
+        self._phase_before_pause = None
+        self._scheduled_transition_remaining = None
+        self._scheduled_transition_was_end = False
+        self._paused_countdown_remaining = None
+        self._was_audio_playing = False
+        self._audio_elapsed_before_pause = 0.0
+        if not self.face_present:
+            self._pause_due_to_face_loss()
 
     def _load_next_question(self) -> None:
         """Load soal berikutnya."""
         # Reset answer flag untuk soal baru
         self.answer_submitted = False
+        self._pending_audio_start = False
 
         state = self.game_logic.get_state()
 
@@ -261,6 +291,13 @@ class PurrfectPitchGame:
     def _play_audio(self) -> None:
         """Play audio soal."""
         self.phase = GamePhase.PLAYING_AUDIO
+        self._pending_audio_start = False
+        self._audio_elapsed_before_pause = 0.0
+        if not self.face_present:
+            self._pending_audio_start = True
+            self._pause_due_to_face_loss()
+            return
+
         self.current_audio_start_time = time.time()
 
         # Show memes dengan animasi
@@ -283,6 +320,9 @@ class PurrfectPitchGame:
         Args:
             side (str): "LEFT" atau "RIGHT"
         """
+        if not self.face_present:
+            return
+
         # Bisa jawab saat audio playing atau waiting answer
         if self.phase not in (GamePhase.PLAYING_AUDIO, GamePhase.WAITING_ANSWER):
             return
@@ -362,6 +402,7 @@ class PurrfectPitchGame:
         # Convert face center from capture frame coords -> window coords, and pass scaled face_size.
         # Apply a small EMA smoothing to reduce jitter.
         frame_h, frame_w = frame.shape[:2]
+        was_present = self.face_present
         scale, crop_x, crop_y = self._get_camera_transform(frame_w, frame_h)
         if state.face_detected and getattr(state, 'face_center', None) is not None:
             fx, fy = state.face_center
@@ -395,13 +436,23 @@ class PurrfectPitchGame:
                 self.meme_overlay.set_head_position(sx_pos, sy_pos, face_size=(scaled_face_w, scaled_face_h))
             else:
                 self.meme_overlay.set_head_position(sx_pos, sy_pos)
+            self.face_present = True
         else:
-            # If no face detected, keep previous smoothed head (do not change overlay suddenly)
-            if self._smoothed_head is not None:
-                self.meme_overlay.set_head_position(int(self._smoothed_head[0]), int(self._smoothed_head[1]))
+            # Hide overlay and mark face lost
+            self.face_present = False
+            self._smoothed_head = None
+            self.meme_overlay.hide_memes(animate=False)
 
-        # Update highlight berdasarkan tilt state
-        if self.phase in (GamePhase.PLAYING_AUDIO, GamePhase.WAITING_ANSWER):
+        if self.face_present and not was_present:
+            self._resume_from_face_pause()
+        elif not self.face_present:
+            self._pause_due_to_face_loss()
+
+        # Update highlight hanya ketika wajah ada
+        if (
+            self.phase in (GamePhase.PLAYING_AUDIO, GamePhase.WAITING_ANSWER)
+            and self.face_present
+        ):
             if state.tilt_state in ("LEFT", "RIGHT"):
                 self.meme_overlay.set_highlight(state.tilt_state)
             else:
@@ -414,9 +465,93 @@ class PurrfectPitchGame:
             # Reset highlight jika tidak dalam phase playing/waiting
             self.meme_overlay.set_highlight(None)
 
+    def _pause_due_to_face_loss(self) -> None:
+        """Pause game state ketika wajah hilang."""
+        if self.phase in (GamePhase.START_POPUP, GamePhase.IDLE, GamePhase.GAME_OVER):
+            return
+        if self.phase == GamePhase.PAUSED_NO_FACE:
+            return
+
+        print("[PAUSE] No face detected - pausing game flow.")
+        self._phase_before_pause = self.phase
+
+        # Pause countdown timer
+        if self.phase == GamePhase.COUNTDOWN and self.countdown_end_time is not None:
+            self._paused_countdown_remaining = max(0.0, self.countdown_end_time - time.time())
+            self.countdown_end_time = None
+
+        # Pause pending transitions between questions
+        if self._scheduled_next_question_time is not None:
+            self._scheduled_transition_remaining = max(0.0, self._scheduled_next_question_time - time.time())
+            self._scheduled_next_question_time = None
+            self._scheduled_transition_was_end = self._scheduled_end_game
+
+        # Pause audio playback if needed
+        if self.phase == GamePhase.PLAYING_AUDIO and self.current_audio_start_time is not None:
+            self._audio_elapsed_before_pause = time.time() - self.current_audio_start_time
+        else:
+            self._audio_elapsed_before_pause = 0.0
+        self._was_audio_playing = self.audio_manager.is_playing()
+        if self._was_audio_playing:
+            self.audio_manager.pause()
+
+        self.game_logic.pause()
+        self.phase = GamePhase.PAUSED_NO_FACE
+
+    def _resume_from_face_pause(self) -> None:
+        """Resume game setelah wajah kembali terdeteksi."""
+        if self.phase != GamePhase.PAUSED_NO_FACE:
+            return
+
+        print("[PAUSE] Face detected - resuming game.")
+        self.game_logic.resume()
+
+        next_phase = self._phase_before_pause or GamePhase.IDLE
+        self._phase_before_pause = None
+
+        # Resume countdown if it was active
+        if next_phase == GamePhase.COUNTDOWN:
+            remaining = self._paused_countdown_remaining if self._paused_countdown_remaining is not None else self.countdown_duration
+            remaining = max(0.0, remaining)
+            elapsed = self.countdown_duration - remaining
+            self.countdown_start_time = time.time() - elapsed
+            self.countdown_end_time = time.time() + remaining
+        self._paused_countdown_remaining = None
+        if next_phase != GamePhase.COUNTDOWN:
+            self.countdown_end_time = None
+
+        # Resume pending transitions
+        if self._scheduled_transition_remaining is not None:
+            self._scheduled_next_question_time = time.time() + self._scheduled_transition_remaining
+            self._scheduled_transition_remaining = None
+            self._scheduled_end_game = self._scheduled_transition_was_end
+            self._scheduled_transition_was_end = False
+
+        self.phase = next_phase
+
+        if self._pending_audio_start:
+            self._pending_audio_start = False
+            self._play_audio()
+        elif self._was_audio_playing:
+            self.audio_manager.resume()
+            if self.current_audio_start_time is not None:
+                self.current_audio_start_time = time.time() - self._audio_elapsed_before_pause
+            self._audio_elapsed_before_pause = 0.0
+        else:
+            self._audio_elapsed_before_pause = 0.0
+
+        if self.phase in (GamePhase.PLAYING_AUDIO, GamePhase.WAITING_ANSWER, GamePhase.SHOW_FEEDBACK):
+            self.meme_overlay.show_memes(animate=False)
+
+        self._was_audio_playing = False
+
     def _update(self) -> None:
         """Update game state."""
         state = self.game_logic.get_state()
+
+        if self.phase == GamePhase.PAUSED_NO_FACE:
+            self.waveform_view.set_playback_progress(0.0)
+            return
 
         # Check scheduled next-question/game-over timing
         if self._scheduled_next_question_time is not None:
@@ -443,8 +578,10 @@ class PurrfectPitchGame:
         if self.phase == GamePhase.COUNTDOWN:
             if self.countdown_start_time is None:
                 self.countdown_start_time = time.time()
-            if time.time() - self.countdown_start_time >= self.countdown_duration:
+                self.countdown_end_time = self.countdown_start_time + self.countdown_duration
+            if self.countdown_end_time is not None and time.time() >= self.countdown_end_time:
                 # Start first question immediately
+                self.countdown_end_time = None
                 self._load_next_question()
                 return
 
@@ -510,9 +647,10 @@ class PurrfectPitchGame:
 
         # UI overlay - center elements on the camera
         state = self.game_logic.get_state()
+        face_available = self.face_present
 
-        # Draw meme overlay only when game has started (not on initial menu)
-        if self.phase not in (GamePhase.IDLE, GamePhase.START_POPUP):
+        # Draw meme overlay only when game has started and face detected
+        if self.phase not in (GamePhase.IDLE, GamePhase.START_POPUP) and face_available:
             self.meme_overlay.draw(canvas)
 
         # Layout coordinates (centered)
@@ -611,7 +749,7 @@ class PurrfectPitchGame:
                 cv2.putText(canvas, score_text, (sc_x, sc_y), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (255, 220, 120), 2, cv2.LINE_AA)
 
         # If we're in the playing/waiting/feedback phases, draw timer, score, waveform and memes
-        if self.phase in (GamePhase.PLAYING_AUDIO, GamePhase.WAITING_ANSWER, GamePhase.SHOW_FEEDBACK):
+        if face_available and self.phase in (GamePhase.PLAYING_AUDIO, GamePhase.WAITING_ANSWER, GamePhase.SHOW_FEEDBACK):
             # Timer and score at top-right corner
             timer_text = f"Time: {int(state.remaining_time)}s"
             score_text = f"Score: {state.score}/{state.total_questions}"
@@ -646,18 +784,17 @@ class PurrfectPitchGame:
 
         # Status / feedback text (centered)
         status_lines = []
-        if self.phase == GamePhase.IDLE:
-            status_lines = []
-        elif self.phase == GamePhase.PLAYING_AUDIO:
-            # 'Listening' text is drawn above the waveform instead of here
-            status_lines = []
-        elif self.phase == GamePhase.WAITING_ANSWER:
-            status_lines = ["Tilt your head LEFT or RIGHT", "to choose the cat!"]
-        elif self.phase == GamePhase.SHOW_FEEDBACK:
-            status_lines = [self.feedback_message]
-        elif self.phase == GamePhase.GAME_OVER:
-            # Don't show literal 'GAME OVER' text; use popup image or score only
-            status_lines = []
+        if face_available:
+            if self.phase == GamePhase.IDLE:
+                status_lines = []
+            elif self.phase == GamePhase.PLAYING_AUDIO:
+                status_lines = []
+            elif self.phase == GamePhase.WAITING_ANSWER:
+                status_lines = ["Tilt your head LEFT or RIGHT", "to choose the cat!"]
+            elif self.phase == GamePhase.SHOW_FEEDBACK:
+                status_lines = [self.feedback_message]
+            elif self.phase == GamePhase.GAME_OVER:
+                status_lines = []
 
         for i, line in enumerate(status_lines):
             if "BENAR" in line:
@@ -674,7 +811,7 @@ class PurrfectPitchGame:
             cv2.putText(canvas, line, (text_x, status_y + i * 40), cv2.FONT_HERSHEY_SIMPLEX, size, color, thickness, cv2.LINE_AA)
 
         # If playing audio, draw the listening text centered above the waveform
-        if self.phase == GamePhase.PLAYING_AUDIO:
+        if face_available and self.phase == GamePhase.PLAYING_AUDIO:
             listen_text = "Listening to the cat sound..."
             lt_size = cv2.getTextSize(listen_text, cv2.FONT_HERSHEY_SIMPLEX, 0.8, 2)[0]
             lt_x = center_x - lt_size[0] // 2
@@ -682,7 +819,7 @@ class PurrfectPitchGame:
             cv2.putText(canvas, listen_text, (lt_x, lt_y), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (200, 200, 200), 2, cv2.LINE_AA)
 
         # If in countdown, draw big centered number (3..1)
-        if self.phase == GamePhase.COUNTDOWN and self.countdown_start_time is not None:
+        if face_available and self.phase == GamePhase.COUNTDOWN and self.countdown_start_time is not None:
             elapsed = time.time() - self.countdown_start_time
             remaining = max(0.0, self.countdown_duration - elapsed)
             count = int(math.ceil(remaining))
@@ -722,6 +859,18 @@ class PurrfectPitchGame:
         ctrl_y = self.window_height - 20
         cv2.putText(canvas, controls, (ctrl_x, ctrl_y), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (180, 180, 180), 1, cv2.LINE_AA)
 
+        if not face_available:
+            warn = "NO FACE DETECTED - PLEASE LOOK AT THE CAMERA"
+            warn_size = cv2.getTextSize(warn, cv2.FONT_HERSHEY_SIMPLEX, 0.8, 2)[0]
+            warn_x = (self.window_width - warn_size[0]) // 2
+            warn_y = self.window_height // 2
+            cv2.putText(
+                canvas, warn,
+                (warn_x, warn_y),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.8,
+                (0, 0, 255), 2, cv2.LINE_AA
+            )
+
         return canvas
 
     def run(self) -> None:
@@ -756,12 +905,9 @@ class PurrfectPitchGame:
                 # Flip frame (mirror)
                 frame = cv2.flip(frame, 1)
 
-                # Evaluate face tracking (even on START screen for smooth transition)
+                # Evaluate face tracking for every phase
                 face_state = self.face_tracker._evaluate_state(frame)
-
-                # Face tracking callback (but only apply actions when game is running)
-                if self.phase not in (GamePhase.START_POPUP, GamePhase.IDLE, GamePhase.GAME_OVER):
-                    self._on_face_tracking_update(face_state, frame)
+                self._on_face_tracking_update(face_state, frame)
 
                 # Update game logic
                 self._update()

@@ -33,6 +33,7 @@ class GameState:
     current_index: int
     total_questions: int
     current_question: Optional[Question]
+    is_paused: bool
 
 
 class GameLogic:
@@ -45,23 +46,36 @@ class GameLogic:
         self._current_idx = 0
         self._score = 0
         self._is_running = False
+        self._is_paused = False
+        self._pause_start: Optional[float] = None
+        self._pause_total: float = 0.0
 
     def start_game(self, shuffle: bool = True) -> None:
         self._score = 0
         self._is_running = True
         self._start_time = time.monotonic()
         self._current_idx = 0
+        self._is_paused = False
+        self._pause_start = None
+        self._pause_total = 0.0
         if shuffle:
             random.shuffle(self._questions)
 
     def stop_game(self) -> None:
         self._is_running = False
         self._start_time = None
+        self._is_paused = False
+        self._pause_start = None
+        self._pause_total = 0.0
 
     def _remaining_time(self) -> float:
         if not self._is_running or self._start_time is None:
             return self.duration_seconds
-        elapsed = time.monotonic() - self._start_time
+        now = time.monotonic()
+        effective_now = (
+            self._pause_start if self._is_paused and self._pause_start is not None else now
+        )
+        elapsed = effective_now - self._start_time - self._pause_total
         remaining = max(0.0, self.duration_seconds - elapsed)
         if remaining <= 0.0:
             self.stop_game()
@@ -72,8 +86,20 @@ class GameLogic:
             return self._questions[self._current_idx]
         return None
 
+    def pause(self) -> None:
+        if self._is_running and not self._is_paused:
+            self._is_paused = True
+            self._pause_start = time.monotonic()
+
+    def resume(self) -> None:
+        if self._is_running and self._is_paused:
+            if self._pause_start is not None:
+                self._pause_total += time.monotonic() - self._pause_start
+            self._pause_start = None
+            self._is_paused = False
+
     def submit_answer(self, side: str) -> bool:
-        if not self._is_running:
+        if not self._is_running or self._is_paused:
             return False
         question = self.current_question()
         if question is None:
@@ -94,6 +120,7 @@ class GameLogic:
             current_index=self._current_idx,
             total_questions=len(self._questions),
             current_question=self.current_question(),
+            is_paused=self._is_paused,
         )
 
 
