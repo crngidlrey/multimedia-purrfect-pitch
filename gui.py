@@ -126,8 +126,8 @@ class PurrfectPitchGame:
         # Popup animation state (start image visible at launch)
         self.popup_start_time: Optional[float] = time.time()
         self.popup_anim_duration: float = 0.6
-        # Camera transform cache (scale and offsets for letterboxing)
-        self._camera_transform: Optional[tuple[float, int, int, int, int]] = None
+        # Camera transform cache (scale and crop offsets for fit-to-window)
+        self._camera_transform: Optional[tuple[float, int, int]] = None
 
         # Verify start image loaded
         if self.start_img is not None:
@@ -330,13 +330,16 @@ class PurrfectPitchGame:
             self.feedback_start_time = time.time()
 
     def _compute_camera_transform(self, frame_w: int, frame_h: int):
-        """Hitung skala dan offset agar kamera tidak terdistorsi."""
-        scale = min(self.window_width / frame_w, self.window_height / frame_h)
+        """
+        Hitung skala dan offset crop agar kamera mengisi seluruh window tanpa distorsi.
+        Menggunakan pendekatan cover (zoom + crop) sehingga tidak ada ruang kosong saat window dibesarkan.
+        """
+        scale = max(self.window_width / frame_w, self.window_height / frame_h)
         scaled_w = int(frame_w * scale)
         scaled_h = int(frame_h * scale)
-        offset_x = (self.window_width - scaled_w) // 2
-        offset_y = (self.window_height - scaled_h) // 2
-        self._camera_transform = (scale, offset_x, offset_y, scaled_w, scaled_h)
+        crop_x = max(0, (scaled_w - self.window_width) // 2)
+        crop_y = max(0, (scaled_h - self.window_height) // 2)
+        self._camera_transform = (scale, crop_x, crop_y)
         return self._camera_transform
 
     def _get_camera_transform(self, frame_w: int, frame_h: int):
@@ -359,15 +362,13 @@ class PurrfectPitchGame:
         # Convert face center from capture frame coords -> window coords, and pass scaled face_size.
         # Apply a small EMA smoothing to reduce jitter.
         frame_h, frame_w = frame.shape[:2]
-        transform = self._get_camera_transform(frame_w, frame_h)
-        scale, offset_x, offset_y, _, _ = transform
-
+        scale, crop_x, crop_y = self._get_camera_transform(frame_w, frame_h)
         if state.face_detected and getattr(state, 'face_center', None) is not None:
             fx, fy = state.face_center
 
-            # Scale coordinates from capture frame -> window canvas
-            head_x = fx * scale + offset_x
-            head_y = fy * scale + offset_y
+            # Map dari frame capture -> canvas yang sudah dicrop
+            head_x = fx * scale - crop_x
+            head_y = fy * scale - crop_y
 
             # Scaled face size when available
             if getattr(state, 'face_size', None) is not None:
@@ -495,12 +496,17 @@ class PurrfectPitchGame:
             np.ndarray: Frame dengan UI overlay
         """
         frame_h, frame_w = camera_frame.shape[:2]
-        scale, offset_x, offset_y, scaled_w, scaled_h = self._compute_camera_transform(frame_w, frame_h)
+        scale, crop_x, crop_y = self._compute_camera_transform(frame_w, frame_h)
 
-        # Resize camera frame dengan mempertahankan rasio, lalu letterbox di canvas
+        # Resize camera frame dengan mempertahankan rasio, kemudian crop agar mengisi window
+        scaled_w = int(frame_w * scale)
+        scaled_h = int(frame_h * scale)
         resized = cv2.resize(camera_frame, (scaled_w, scaled_h))
-        canvas = np.zeros((self.window_height, self.window_width, 3), dtype=np.uint8)
-        canvas[offset_y:offset_y + scaled_h, offset_x:offset_x + scaled_w] = resized
+
+        # Pastikan crop area valid
+        crop_x = min(max(0, crop_x), max(0, scaled_w - self.window_width))
+        crop_y = min(max(0, crop_y), max(0, scaled_h - self.window_height))
+        canvas = resized[crop_y:crop_y + self.window_height, crop_x:crop_x + self.window_width].copy()
 
         # UI overlay - center elements on the camera
         state = self.game_logic.get_state()
@@ -731,6 +737,11 @@ class PurrfectPitchGame:
         print("  ESC        - Exit game")
         print("\n" + "="*60 + "\n")
 
+        # Prepare window (allow dynamic resize)
+        window_name = "Purrfect Pitch"
+        cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
+        cv2.resizeWindow(window_name, self.window_width, self.window_height)
+
         # Start face tracker
         self.face_tracker.start()
 
@@ -759,10 +770,18 @@ class PurrfectPitchGame:
                 game_frame = self._render(frame)
 
                 # Show window
-                cv2.imshow("Purrfect Pitch", game_frame)
+                cv2.imshow(window_name, game_frame)
+
+                # Update window size to allow responsive layout
+                rect = cv2.getWindowImageRect(window_name)
+                if rect[2] > 0 and rect[3] > 0:
+                    if rect[2] != self.window_width or rect[3] != self.window_height:
+                        self.window_width = rect[2]
+                        self.window_height = rect[3]
+                        self._camera_transform = None  # recalc scale/crop
 
                 # Check if window was closed using the X button
-                if cv2.getWindowProperty("Purrfect Pitch", cv2.WND_PROP_VISIBLE) < 1:
+                if cv2.getWindowProperty(window_name, cv2.WND_PROP_VISIBLE) < 1:
                     print("\n[EXIT] Window closed by user")
                     break
 
