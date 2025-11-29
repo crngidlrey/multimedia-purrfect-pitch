@@ -59,7 +59,6 @@ Institut Teknologi Sumatera
 
 ### Prasyarat
 - Python 3.11+
-- Webcam (untuk face tracking)
 - Speaker/Headphone
 
 ### Cara Instalasi
@@ -116,13 +115,14 @@ multimedia-purrfect-pitch/
 
 ### Alur Permainan
 
-1. Tekan `SPACE` untuk mulai
-2. Dengarkan audio kucing
-3. Tunggu audio selesai (opsional)
-4. Pilih gambar dengan head tilt atau keyboard
-5. Dapat feedback (benar/salah)
-6. Soal berikutnya muncul otomatis
-7. Game over setelah 45 detik
+1. Setting kamera untuk input video pada `face tracker.py`. Gunakan (0) untuk kamera bawaan device dan (1) untuk webcam/camera eksternal.
+2. Tekan `SPACE` untuk mulai
+3. Dengarkan audio kucing
+4. Tunggu audio selesai (opsional)
+5. Pilih gambar dengan head tilt atau keyboard
+6. Dapat feedback (benar/salah)
+7. Soal berikutnya muncul otomatis
+8. Game over setelah 45 detik
 
 ---
 

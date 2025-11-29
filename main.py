@@ -741,8 +741,14 @@ class PurrfectPitchGame:
                 # Show window
                 cv2.imshow("Purrfect Pitch", game_frame)
 
-                # Handle keyboard input
-                key = cv2.waitKey(1) & 0xFF
+                # Check if window was closed using the X button
+                if cv2.getWindowProperty("Purrfect Pitch", cv2.WND_PROP_VISIBLE) < 1:
+                    print("\n[EXIT] Window closed by user")
+                    break
+
+                # Handle keyboard input (use waitKeyEx for special keys)
+                raw_key = cv2.waitKeyEx(1)
+                key = raw_key & 0xFF if raw_key != -1 else -1
 
                 if key == 27:  # ESC
                     print("\n[EXIT] User quit")
@@ -751,11 +757,11 @@ class PurrfectPitchGame:
                     # If on the start screen or after game over, pressing SPACE starts the countdown and game
                     if self.phase in (GamePhase.START_POPUP, GamePhase.IDLE, GamePhase.GAME_OVER):
                         self.start_countdown_and_game()
-                elif key == 81 or key == 2:  # LEFT ARROW
-                    if self.phase == GamePhase.WAITING_ANSWER:
+                elif raw_key in (81, 65361, 2424832, 0x250000, 0xFF51):  # LEFT arrow variants
+                    if self.phase in (GamePhase.PLAYING_AUDIO, GamePhase.WAITING_ANSWER):
                         self._submit_answer("LEFT")
-                elif key == 83 or key == 3:  # RIGHT ARROW
-                    if self.phase == GamePhase.WAITING_ANSWER:
+                elif raw_key in (83, 65363, 2555904, 0x270000, 0xFF53):  # RIGHT arrow variants
+                    if self.phase in (GamePhase.PLAYING_AUDIO, GamePhase.WAITING_ANSWER):
                         self._submit_answer("RIGHT")
 
         except KeyboardInterrupt:
