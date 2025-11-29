@@ -96,6 +96,7 @@ class PurrfectPitchGame:
         self.questions = self._prepare_questions()
 
         print("[INIT] Inisialisasi Game Logic...")
+        # Don't start game logic yet - wait for user to press SPACE
         self.game_logic = GameLogic(self.questions, duration_seconds=45.0)
 
         print("[INIT] Inisialisasi GUI components...")
@@ -125,6 +126,12 @@ class PurrfectPitchGame:
         # Popup animation state (start image visible at launch)
         self.popup_start_time: Optional[float] = time.time()
         self.popup_anim_duration: float = 0.6
+
+        # Verify start image loaded
+        if self.start_img is not None:
+            print(f"[INIT] Start image loaded successfully: {self.start_img.shape}")
+        else:
+            print("[WARN] Start image (start.png) failed to load!")
 
         print("[INIT] Game ready!")
 
@@ -423,7 +430,8 @@ class PurrfectPitchGame:
                 return
 
         # Check game over (timer habis atau soal habis)
-        if not state.is_running and self.phase != GamePhase.GAME_OVER:
+        # BUT don't check if we're still on start screen!
+        if not state.is_running and self.phase not in (GamePhase.GAME_OVER, GamePhase.START_POPUP):
             # Stop semua yang sedang berjalan
             self.audio_manager.stop()
             self.meme_overlay.hide_memes(animate=False)
@@ -478,7 +486,7 @@ class PurrfectPitchGame:
         state = self.game_logic.get_state()
 
         # Draw meme overlay only when game has started (not on initial menu)
-        if self.phase not in (GamePhase.IDLE,):
+        if self.phase not in (GamePhase.IDLE, GamePhase.START_POPUP):
             self.meme_overlay.draw(canvas)
 
         # Layout coordinates (centered)
@@ -550,56 +558,14 @@ class PurrfectPitchGame:
             else:
                 canvas[y0:y1, x0:x1] = src
 
-        # START_POPUP: draw the main menu section with start image, title and controls
+        # START_POPUP: draw the START image instead of GAME OVER
         if self.phase == GamePhase.START_POPUP:
-            # Black canvas is already used for START_POPUP run loop; draw menu items
-            menu_y = 80
-            # Draw start image (if available) near the top
             if self.start_img is not None and self.popup_start_time is not None:
                 elapsed = time.time() - self.popup_start_time
-                # scale start image to fit nicely (max width 60% of window)
-                max_w = int(self.window_width * 0.6)
-                h0, w0 = self.start_img.shape[:2]
-                scale_w = min(max_w, w0)
-                scale = scale_w / float(w0)
-                new_w = max(1, int(w0 * scale))
-                new_h = max(1, int(h0 * scale))
-                try:
-                    img_resized = cv2.resize(self.start_img, (new_w, new_h), interpolation=cv2.INTER_AREA)
-                except Exception:
-                    img_resized = self.start_img
-
-                ix = center_x - new_w // 2
-                iy = menu_y
-                # Composite image (handle alpha)
-                if img_resized.shape[2] == 4:
-                    alpha = (img_resized[..., 3:4] / 255.0).astype(np.float32)
-                    src_bgr = img_resized[..., :3].astype(np.float32)
-                    dst = canvas[iy:iy+new_h, ix:ix+new_w].astype(np.float32)
-                    out = alpha * src_bgr + (1 - alpha) * dst
-                    canvas[iy:iy+new_h, ix:ix+new_w] = out.astype(np.uint8)
-                else:
-                    canvas[iy:iy+new_h, ix:ix+new_w] = img_resized
-
-            # Draw title below the image
-            title_text = "PURRFECT PITCH"
-            title_scale = 1.8
-            title_th = 3
-            tsize = cv2.getTextSize(title_text, cv2.FONT_HERSHEY_DUPLEX, title_scale, title_th)[0]
-            t_x = center_x - tsize[0] // 2
-            t_y = menu_y + (new_h if 'new_h' in locals() else 220) + 40
-            cv2.putText(canvas, title_text, (t_x, t_y), cv2.FONT_HERSHEY_DUPLEX, title_scale, (100, 200, 255), title_th, cv2.LINE_AA)
-
-            # Controls / info lines
-            info_lines = ["SPACE: Start / Restart", "ESC: Exit"]
-            for i, line in enumerate(info_lines):
-                isz = cv2.getTextSize(line, cv2.FONT_HERSHEY_SIMPLEX, 0.7, 2)[0]
-                ix = center_x - isz[0] // 2
-                iy_line = t_y + 40 + i * 36
-                cv2.putText(canvas, line, (ix, iy_line), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (220, 220, 220), 2, cv2.LINE_AA)
+                _draw_popup_image(self.start_img, center_x, self.window_height // 2 - 60, elapsed, self.popup_anim_duration)
 
         # GAME_OVER: draw game over image centered with popup and show score (raised)
-        if self.phase == GamePhase.GAME_OVER:
+        elif self.phase == GamePhase.GAME_OVER:
             if self.gameover_img is not None:
                 elapsed = 0.0 if self.popup_start_time is None else (time.time() - self.popup_start_time)
                 # Draw popup slightly higher
@@ -750,23 +716,20 @@ class PurrfectPitchGame:
 
         try:
             while True:
-                # If showing the START screen, do not read the camera — render a black canvas with the start image
-                if self.phase == GamePhase.START_POPUP:
-                    frame = np.zeros((self.window_height, self.window_width, 3), dtype=np.uint8)
-                else:
-                    # Read camera frame
-                    ret, frame = self.face_tracker._cap.read()
-                    if not ret:
-                        print("[ERROR] Cannot read camera frame")
-                        break
+                # Read camera frame for all phases (including START_POPUP)
+                ret, frame = self.face_tracker._cap.read()
+                if not ret:
+                    print("[ERROR] Cannot read camera frame")
+                    break
 
-                    # Flip frame (mirror)
-                    frame = cv2.flip(frame, 1)
+                # Flip frame (mirror)
+                frame = cv2.flip(frame, 1)
 
-                    # Evaluate face tracking
-                    face_state = self.face_tracker._evaluate_state(frame)
+                # Evaluate face tracking (even on START screen for smooth transition)
+                face_state = self.face_tracker._evaluate_state(frame)
 
-                    # Face tracking callback
+                # Face tracking callback (but only apply actions when game is running)
+                if self.phase not in (GamePhase.START_POPUP, GamePhase.IDLE, GamePhase.GAME_OVER):
                     self._on_face_tracking_update(face_state, frame)
 
                 # Update game logic
