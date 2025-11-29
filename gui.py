@@ -126,6 +126,8 @@ class PurrfectPitchGame:
         # Popup animation state (start image visible at launch)
         self.popup_start_time: Optional[float] = time.time()
         self.popup_anim_duration: float = 0.6
+        # Camera transform cache (scale and offsets for letterboxing)
+        self._camera_transform: Optional[tuple[float, int, int, int, int]] = None
 
         # Verify start image loaded
         if self.start_img is not None:
@@ -327,6 +329,21 @@ class PurrfectPitchGame:
             self.phase = GamePhase.SHOW_FEEDBACK
             self.feedback_start_time = time.time()
 
+    def _compute_camera_transform(self, frame_w: int, frame_h: int):
+        """Hitung skala dan offset agar kamera tidak terdistorsi."""
+        scale = min(self.window_width / frame_w, self.window_height / frame_h)
+        scaled_w = int(frame_w * scale)
+        scaled_h = int(frame_h * scale)
+        offset_x = (self.window_width - scaled_w) // 2
+        offset_y = (self.window_height - scaled_h) // 2
+        self._camera_transform = (scale, offset_x, offset_y, scaled_w, scaled_h)
+        return self._camera_transform
+
+    def _get_camera_transform(self, frame_w: int, frame_h: int):
+        if self._camera_transform is None:
+            return self._compute_camera_transform(frame_w, frame_h)
+        return self._camera_transform
+
     def _on_face_tracking_update(self, state: FaceTrackerState, frame: np.ndarray) -> None:
         """
         Callback dari face tracker.
@@ -342,20 +359,21 @@ class PurrfectPitchGame:
         # Convert face center from capture frame coords -> window coords, and pass scaled face_size.
         # Apply a small EMA smoothing to reduce jitter.
         frame_h, frame_w = frame.shape[:2]
+        transform = self._get_camera_transform(frame_w, frame_h)
+        scale, offset_x, offset_y, _, _ = transform
+
         if state.face_detected and getattr(state, 'face_center', None) is not None:
             fx, fy = state.face_center
 
             # Scale coordinates from capture frame -> window canvas
-            sx = self.window_width / frame_w
-            sy = self.window_height / frame_h
-            head_x = fx * sx
-            head_y = fy * sy
+            head_x = fx * scale + offset_x
+            head_y = fy * scale + offset_y
 
             # Scaled face size when available
             if getattr(state, 'face_size', None) is not None:
                 face_w, face_h = state.face_size
-                scaled_face_w = int(face_w * sx)
-                scaled_face_h = int(face_h * sy)
+                scaled_face_w = int(face_w * scale)
+                scaled_face_h = int(face_h * scale)
             else:
                 scaled_face_w = None
                 scaled_face_h = None
@@ -476,11 +494,13 @@ class PurrfectPitchGame:
         Returns:
             np.ndarray: Frame dengan UI overlay
         """
-        # Resize camera frame to fill the window (fullscreen camera)
-        camera_resized = cv2.resize(camera_frame, (self.window_width, self.window_height))
+        frame_h, frame_w = camera_frame.shape[:2]
+        scale, offset_x, offset_y, scaled_w, scaled_h = self._compute_camera_transform(frame_w, frame_h)
 
-        # Use the camera frame as the main canvas so UI overlays appear on the camera
-        canvas = camera_resized
+        # Resize camera frame dengan mempertahankan rasio, lalu letterbox di canvas
+        resized = cv2.resize(camera_frame, (scaled_w, scaled_h))
+        canvas = np.zeros((self.window_height, self.window_width, 3), dtype=np.uint8)
+        canvas[offset_y:offset_y + scaled_h, offset_x:offset_x + scaled_w] = resized
 
         # UI overlay - center elements on the camera
         state = self.game_logic.get_state()
