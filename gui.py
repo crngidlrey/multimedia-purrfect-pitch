@@ -355,6 +355,7 @@ class PurrfectPitchGame:
         # for the very short time before next question loads)
         self.feedback_message = "BENAR!" if is_correct else "SALAH!"
         print(f"[FEEDBACK] {self.feedback_message}")
+        self._play_answer_sound(is_correct)
 
         # Hide memes instantly and schedule the next question to make
         # transitions feel smooth (no fade, but a short delay so the user sees feedback)
@@ -639,6 +640,12 @@ class PurrfectPitchGame:
         self.audio_manager.play_effect(win_sound, volume=0.8)
         self._win_sound_played = True
 
+    def _play_answer_sound(self, is_correct: bool) -> None:
+        """Mainkan SFX saat jawaban benar/salah."""
+        sound_name = "correct.wav" if is_correct else "wrong.wav"
+        effect_path = Path("asset") / sound_name
+        self.audio_manager.play_effect(effect_path, volume=0.6)
+
     def _render(self, camera_frame: np.ndarray) -> np.ndarray:
         """
         Render game UI ke frame dengan layout modern dan center-aligned.
@@ -693,7 +700,7 @@ class PurrfectPitchGame:
         # Draw start / gameover popup images (centered) with simple "popup" animation
         def _draw_popup_image(img: np.ndarray, center_x: int, center_y: int, elapsed: float, duration: float):
             if img is None:
-                return
+                return 0
             t = min(1.0, max(0.0, elapsed / max(1e-6, duration)))
             # ease-out cubic
             ease = 1 - (1 - t) ** 3
@@ -706,7 +713,7 @@ class PurrfectPitchGame:
             try:
                 img_resized = cv2.resize(img, (new_w, new_h), interpolation=cv2.INTER_AREA)
             except Exception:
-                return
+                return 0
 
             x = int(center_x - new_w // 2)
             y = int(center_y - new_h // 2)
@@ -720,7 +727,7 @@ class PurrfectPitchGame:
             roi_w = x1 - x0
             roi_h = y1 - y0
             if roi_w <= 0 or roi_h <= 0:
-                return
+                return 0
 
             src_x0 = x0 - x
             src_y0 = y0 - y
@@ -738,6 +745,7 @@ class PurrfectPitchGame:
                 canvas[y0:y1, x0:x1] = out.astype(np.uint8)
             else:
                 canvas[y0:y1, x0:x1] = src
+            return new_h
 
         # START_POPUP: draw the START image instead of GAME OVER
         if self.phase == GamePhase.START_POPUP:
@@ -745,12 +753,14 @@ class PurrfectPitchGame:
                 elapsed = time.time() - self.popup_start_time
                 _draw_popup_image(self.start_img, center_x, self.window_height // 2 - 60, elapsed, self.popup_anim_duration)
 
-        # GAME_OVER: draw game over image centered with popup and show score (raised)
+        # GAME_OVER: draw game over image closer to title with aligned score
         elif self.phase == GamePhase.GAME_OVER:
             if self.gameover_img is not None:
                 elapsed = 0.0 if self.popup_start_time is None else (time.time() - self.popup_start_time)
-                # Draw popup slightly higher
-                _draw_popup_image(self.gameover_img, center_x, self.window_height // 2 - 60, elapsed, self.popup_anim_duration)
+                # Position image a bit below the main title
+                img_center_y = title_y + title_size[1] + 50
+                popup_height = _draw_popup_image(self.gameover_img, center_x, img_center_y, elapsed, self.popup_anim_duration)
+
                 # Draw final score above the restart/exit buttons (raised to avoid overlap)
                 score_text = f"Final Score: {state.score}/{state.total_questions}"
                 st_size = cv2.getTextSize(score_text, cv2.FONT_HERSHEY_SIMPLEX, 0.9, 2)[0]
