@@ -10,9 +10,19 @@
 **Tugas Besar Mata Kuliah Multimedia**
 Institut Teknologi Sumatera
 
-[Demo](#demo) • [Installation](#installation) • [How to Play](#how-to-play) • [Team](#team-members)
+[Installation](#installation) • [How to Play](#how-to-play) • [Team](#team-members)
 
 </div>
+
+---
+
+## 👥 Tim Pengembang
+
+| Nama                 | NIM        | ID GitHub                                                |
+|----------------------|------------|----------------------------------------------------------|
+| Elma Nurul Fatika    | 122140069  | [122140069-ElmaNF](https://github.com/122140069-ElmaNF)  |
+| Lois Novel E Gurning | 122140098  | [crngidlrey](https://github.com/crngidlrey)              |
+| Dina Rahma Dita      | 122140184  | [dinarahmadita12](https://github.com/dinarahmadita12)    |
 
 ---
 
@@ -40,18 +50,6 @@ Institut Teknologi Sumatera
 | **Computer Vision** | OpenCV |
 | **Game Engine** | Pygame |
 | **Numerical** | NumPy |
-
----
-
-## 🎬 Demo
-
-> **Catatan**: Tambahkan screenshot/GIF gameplay di sini
-
-```
-[Screenshot: Layar Awal]
-[Screenshot: Gameplay dengan Face Tracking]
-[Screenshot: Game Over]
-```
 
 ---
 
@@ -94,6 +92,7 @@ multimedia-purrfect-pitch/
 ├── audio_processing.py         # Utilitas audio
 ├── game_logic.py               # Manajemen state game
 ├── generate_metadata.py        # Generator metadata
+├── gui.py                      # Manajemen GUI
 └── requirements.txt            # Dependencies
 ```
 
@@ -123,16 +122,6 @@ multimedia-purrfect-pitch/
 6. Dapat feedback (benar/salah)
 7. Soal berikutnya muncul otomatis
 8. Game over setelah 45 detik
-
----
-
-## 👥 Tim Pengembang
-
-| Nama | NIM |
-|------|-----|
-| Elma Nurul Fatika | 122140069 |
-| Lois Novel E Gurning | 122140098 |
-| Dina Rahma Dita | 122140184 |
 
 ---
 
