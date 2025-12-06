@@ -67,7 +67,7 @@ class FaceTracker:
         self._last_confirm = 0.0
 
     def start(self) -> None:
-        self._cap = cv2.VideoCapture(1)
+        self._cap = cv2.VideoCapture(0)
         if not self._cap.isOpened():
             raise RuntimeError("Cannot open camera")
         self._reset_tilt()

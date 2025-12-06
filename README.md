@@ -10,7 +10,6 @@
 **Tugas Besar Mata Kuliah Multimedia**
 Institut Teknologi Sumatera
 
-[Installation](#installation) • [How to Play](#how-to-play) • [Team](#team-members)
 
 </div>
 
