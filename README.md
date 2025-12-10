@@ -131,11 +131,11 @@ multimedia-purrfect-pitch/
 
 | Minggu | Tanggal | Progress |
 |--------|---------|----------|
-| 1 | 27/10/2024 - 03/11/2024 | • Brainstorming ide proyek<br>• Pencarian referensi game serupa<br>• Pembuatan repository GitHub |
-| 2 | 03/11/2024 - 10/11/2024 | • Breakdown ide dan fitur game<br>• Merancang struktur code (MVC pattern)<br>• Desain GUI mockup |
-| 3 | 10/11/2024 - 17/11/2024 | • Pengumpulan asset (10 audio kucing + 10 gambar)<br>• Implementasi audio processing (librosa pitch shifting)<br>• Setup face tracking dengan OpenCV |
-| 4 | 17/11/2024 - 24/11/2024 | • Implementasi game logic dan state management<br>• Integrasi GUI dengan Pygame<br>• Mulai menyusun laporan dokumentasi |
-| 5 | 24/11/2024 - 01/12/2024 | • Revisi code (debugging audio looping bug)<br>• Optimasi head tilt detection<br>• Finalisasi code dan laporan |
+| 1 | 27/10/2025 - 03/11/2025 | • Brainstorming ide proyek<br>• Pencarian referensi game serupa<br>• Pembuatan repository GitHub |
+| 2 | 03/11/2025 - 10/11/2025 | • Breakdown ide dan fitur game<br>• Merancang struktur code (MVC pattern)<br>• Desain GUI mockup |
+| 3 | 10/11/2025 - 17/11/2025 | • Pengumpulan asset (10 audio kucing + 10 gambar)<br>• Implementasi audio processing (librosa pitch shifting)<br>• Setup face tracking dengan OpenCV |
+| 4 | 17/11/2025 - 24/11/2025 | • Implementasi game logic dan state management<br>• Integrasi GUI dengan Pygame<br>• Mulai menyusun laporan dokumentasi |
+| 5 | 24/11/2025 - 01/12/2025 | • Revisi code (debugging audio looping bug)<br>• Optimasi head tilt detection<br>• Finalisasi code dan laporan |
 
 </details>
 
