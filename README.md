@@ -143,9 +143,15 @@ multimedia-purrfect-pitch/
 
 ## 📚 Referensi
 
-- [Librosa Documentation](https://librosa.org/) - Audio processing
-- [OpenCV Documentation](https://docs.opencv.org/) - Computer vision
-- [Pygame Documentation](https://www.pygame.org/docs/) - Game development
+## 📚 Referensi
+
+- [Librosa Documentation](https://librosa.org/) – Audio processing
+- [OpenCV Documentation](https://docs.opencv.org/) – Computer vision
+- [Pygame Documentation](https://www.pygame.org/docs/) – Game development
+- [MediaPipe Documentation](https://google.github.io/mediapipe/) – Face tracking
+- Inspirasi ide awal:
+  - [TikTok: anna_shimmy - Cat Piano](https://www.tiktok.com/@anna_shimmy/video/7121219892405112107)
+  - [TikTok: Cat Piano](https://vt.tiktok.com/ZSy1Gc2wo/)
 
 ---
 
