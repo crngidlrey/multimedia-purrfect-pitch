@@ -29,6 +29,11 @@ Institut Teknologi Sumatera
 
 **Purrfect Pitch** adalah game interaktif multimedia yang menggabungkan **audio processing**, **computer vision**, dan **game logic**. Pemain mendengarkan suara kucing yang pitch-nya sudah dimodifikasi, lalu memilih gambar kucing yang sesuai dengan **memiringkan kepala** (face tracking) atau menggunakan keyboard.
 
+### 🎥 Demo Game
+
+[![Purrfect Pitch Demo](https://img.youtube.com/vi/RlYFVwQGiB4/maxresdefault.jpg)](https://youtu.be/RlYFVwQGiB4)
+
+👉 **[Tonton Demo Game di YouTube](https://youtu.be/RlYFVwQGiB4)**
 
 ### ✨ Fitur Utama
 
