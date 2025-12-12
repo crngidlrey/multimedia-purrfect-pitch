@@ -31,8 +31,6 @@ Institut Teknologi Sumatera
 
 ### 🎥 Demo Game
 
-[![Purrfect Pitch Demo](https://img.youtube.com/vi/RlYFVwQGiB4/maxresdefault.jpg)](https://youtu.be/RlYFVwQGiB4)
-
 👉 **[Tonton Demo Game di YouTube](https://youtu.be/RlYFVwQGiB4)**
 
 ### ✨ Fitur Utama
